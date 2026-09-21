@@ -24,5 +24,8 @@ kotlin {
 }
 
 dependencies {
+    implementation(project(":core:database"))
+    implementation(libs.kotlinx.coroutines.android)
     implementation(libs.javax.inject)
+    testImplementation(libs.junit)
 }

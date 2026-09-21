@@ -8,12 +8,13 @@ import androidx.room.RoomDatabase
  * stabilises; then enable it with a schemas directory (Faz-2).
  */
 @Database(
-    entities = [TabState::class, HistoryEntry::class, SearchEngineEntity::class],
-    version = 1,
+    entities = [TabState::class, HistoryEntry::class, SearchEngineEntity::class, AdBlockStats::class],
+    version = 2,
     exportSchema = false,
 )
 abstract class BrowserDatabase : RoomDatabase() {
     abstract fun tabDao(): TabDao
     abstract fun historyDao(): HistoryDao
     abstract fun searchEngineDao(): SearchEngineDao
+    abstract fun adBlockStatsDao(): AdBlockStatsDao
 }

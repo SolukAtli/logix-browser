@@ -143,6 +143,8 @@ private fun BrowserScreen(
                 onAdBlockChange = settingsVm::setAdBlock,
                 onTrackerBlockChange = settingsVm::setTrackerBlock,
                 onDesktopSiteChange = settingsVm::setDesktopSite,
+                onFilterAutoUpdateChange = settingsVm::setFilterAutoUpdate,
+                onRefreshFilters = settingsVm::refreshFilters,
             )
         }
     }

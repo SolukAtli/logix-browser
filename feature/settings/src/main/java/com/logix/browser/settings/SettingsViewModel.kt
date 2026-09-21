@@ -49,4 +49,12 @@ class SettingsViewModel @Inject constructor(
     fun setDesktopSite(enabled: Boolean) {
         viewModelScope.launch { repository.setDesktopSite(enabled) }
     }
+
+    fun setFilterAutoUpdate(enabled: Boolean) {
+        viewModelScope.launch { repository.setFilterAutoUpdate(enabled) }
+    }
+
+    fun refreshFilters() {
+        viewModelScope.launch { repository.markFiltersUpdated() }
+    }
 }

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
@@ -34,6 +35,8 @@ fun SettingsScreen(
     onAdBlockChange: (Boolean) -> Unit,
     onTrackerBlockChange: (Boolean) -> Unit,
     onDesktopSiteChange: (Boolean) -> Unit,
+    onFilterAutoUpdateChange: (Boolean) -> Unit,
+    onRefreshFilters: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -86,7 +89,33 @@ fun SettingsScreen(
             checked = settings.desktopSite,
             onCheckedChange = onDesktopSiteChange,
         )
+        Spacer(Modifier.height(16.dp))
+        Text("Filtre Listeleri")
+        SettingSwitch(
+            label = "Otomatik güncelle",
+            checked = settings.filterAutoUpdate,
+            onCheckedChange = onFilterAutoUpdateChange,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Son güncelleme: " + formatTimestamp(settings.filterUpdatedAt),
+                modifier = Modifier.weight(1f),
+            )
+            Button(onClick = onRefreshFilters) {
+                Text("Denetle")
+            }
+        }
     }
+}
+
+private fun formatTimestamp(epochMillis: Long): String {
+    if (epochMillis <= 0) return "hiçbir zaman"
+    val date = java.util.Date(epochMillis)
+    val format = java.text.SimpleDateFormat("dd.MM HH:mm", java.util.Locale.getDefault())
+    return format.format(date)
 }
 
 @Composable

@@ -9,4 +9,6 @@ data class BrowserSettings(
     val adBlockEnabled: Boolean = true,
     val trackerBlockEnabled: Boolean = true,
     val desktopSite: Boolean = false,
+    val filterAutoUpdate: Boolean = true,
+    val filterUpdatedAt: Long = 0L,
 )

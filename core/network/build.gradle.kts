@@ -1,11 +1,10 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.compose)
 }
 
 android {
-    namespace = "com.logix.browser.chromiumbridge"
+    namespace = "com.logix.browser.network"
     compileSdk = 36
 
     defaultConfig {
@@ -16,10 +15,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-
-    buildFeatures {
-        compose = true
-    }
 }
 
 kotlin {
@@ -29,11 +24,6 @@ kotlin {
 }
 
 dependencies {
-    implementation(project(":core:adblock"))
-    implementation(project(":core:network"))
-    val composeBom = platform(libs.androidx.compose.bom)
-    implementation(composeBom)
-    implementation(libs.androidx.compose.ui)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.javax.inject)
 }

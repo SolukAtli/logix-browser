@@ -48,7 +48,9 @@ dependencies {
     implementation(project(":core:search"))
     implementation(project(":core:adblock"))
     implementation(project(":core:chromium-bridge"))
+    implementation(project(":core:network"))
 
+    implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.hilt.android)

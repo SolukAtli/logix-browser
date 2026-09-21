@@ -2,16 +2,23 @@ package com.logix.browser.di
 
 import android.content.Context
 import androidx.room.Room
+import com.logix.browser.adblock.ApplicationScope
+import com.logix.browser.database.AdBlockStatsDao
 import com.logix.browser.database.BrowserDatabase
 import com.logix.browser.database.HistoryDao
 import com.logix.browser.database.SearchEngineDao
 import com.logix.browser.database.TabDao
+import com.logix.browser.network.NoopSafeBrowsingClient
+import com.logix.browser.network.SafeBrowsingClient
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 /**
  * Faz-1 DI graph: Room database and DAOs. Feature/core classes use
@@ -28,7 +35,7 @@ object AppModule {
             context,
             BrowserDatabase::class.java,
             "logix-browser.db",
-        ).build()
+        ).fallbackToDestructiveMigration().build()
 
     @Provides
     fun provideTabDao(db: BrowserDatabase): TabDao = db.tabDao()
@@ -38,4 +45,17 @@ object AppModule {
 
     @Provides
     fun provideSearchEngineDao(db: BrowserDatabase): SearchEngineDao = db.searchEngineDao()
+
+    @Provides
+    fun provideAdBlockStatsDao(db: BrowserDatabase): AdBlockStatsDao = db.adBlockStatsDao()
+
+    @Provides
+    @Singleton
+    @ApplicationScope
+    fun provideApplicationScope(): CoroutineScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    @Provides
+    @Singleton
+    fun provideSafeBrowsing(): SafeBrowsingClient = NoopSafeBrowsingClient()
 }
