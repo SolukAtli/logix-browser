@@ -37,4 +37,18 @@ class WebViewEngine(private val webView: WebView) : Engine {
     override fun canGoForward(): Boolean = webView.canGoForward()
 
     override fun currentUrl(): String? = webView.url
+
+    override fun onShow() {
+        webView.onResume()
+        webView.resumeTimers()
+    }
+
+    override fun onHide() {
+        webView.onPause()
+        webView.pauseTimers()
+    }
+
+    override fun destroy() {
+        webView.destroy()
+    }
 }

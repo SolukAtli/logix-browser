@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.logix.browser.chromiumbridge.ChromiumEngineManager
 import com.logix.browser.chromiumbridge.Engine
+import com.logix.browser.chromiumbridge.EngineRegistry
+import com.logix.browser.chromiumbridge.MemoryPressureHandler
 import com.logix.browser.database.TabState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -17,11 +19,18 @@ import kotlinx.coroutines.launch
 /**
  * Tab list state over [TabsRepository]; programmatic navigation goes
  * through [ChromiumEngineManager] so the bound [Engine] stays in sync.
+ *
+ * Freeze/restore contract: the pool admits at most
+ * [TabPool.MAX_LIVE_ENGINES] live tabs. Evicted tabs keep only their
+ * [TabState] row; switching back rehydrates the engine from
+ * `TabState.url`. [EngineRegistry] performs the actual native releases.
  */
 @HiltViewModel
 class TabsViewModel @Inject constructor(
     private val repository: TabsRepository,
     private val engineManager: ChromiumEngineManager,
+    private val registry: EngineRegistry,
+    memoryPressure: MemoryPressureHandler,
 ) : ViewModel() {
 
     val tabs: StateFlow<List<TabState>> = repository.tabs
@@ -31,24 +40,41 @@ class TabsViewModel @Inject constructor(
         .map { list -> list.firstOrNull { it.isActive } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    val liveTabIds: StateFlow<Set<String>> = repository.liveTabIds
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
     init {
         viewModelScope.launch {
             if (repository.tabs.first().isEmpty()) {
                 repository.createTab()
             }
         }
+        viewModelScope.launch {
+            memoryPressure.pressure.collect { level ->
+                if (MemoryPressureHandler.isCritical(level)) {
+                    releaseBackgroundEngines()
+                }
+            }
+        }
     }
 
-    fun bindEngine(engine: Engine) = engineManager.bind(engine)
+    fun bindEngine(engine: Engine) {
+        val id = activeTab.value?.id ?: return
+        registry.register(id, engine)
+        engineManager.bind(engine)
+        engine.onShow()
+    }
 
     fun openInActiveTab(url: String) {
         viewModelScope.launch {
             val current = activeTab.value
-            if (current == null) {
+            val evicted = if (current == null) {
                 repository.createTab(url = url, title = hostOf(url))
+                emptyList()
             } else {
                 repository.openUrl(current.id, url)
             }
+            evicted.forEach(registry::release)
             engineManager.loadUrl(url)
         }
     }
@@ -59,18 +85,48 @@ class TabsViewModel @Inject constructor(
 
     fun closeTab(id: String) {
         viewModelScope.launch {
+            registry.release(id)
             repository.closeTab(id)
             val current = repository.tabs.first()
             if (current.isEmpty()) {
                 repository.createTab()
             } else if (current.none { it.isActive }) {
-                repository.selectTab(current.first().id)
+                selectTab(current.first().id)
             }
         }
     }
 
     fun selectTab(id: String) {
-        viewModelScope.launch { repository.selectTab(id) }
+        viewModelScope.launch {
+            val prevId = activeTab.value?.id
+            if (prevId != null && prevId != id) {
+                registry.get(prevId)?.onHide()
+            }
+            val evicted = repository.selectTab(id)
+            evicted.forEach(registry::release)
+            if (prevId != null && prevId != id) {
+                registry.move(prevId, id)
+            }
+            // Frozen tab restore: session was dropped, TabState.url survived.
+            val tab = repository.tabs.first().firstOrNull { it.id == id }
+            val restoreUrl = tab?.url
+            if (restoreUrl != null) {
+                engineManager.loadUrl(restoreUrl)
+            } else {
+                registry.get(id)?.onShow()
+            }
+        }
+    }
+
+    /**
+     * System memory pressure: freeze every background tab now, keep only
+     * the active one alive.
+     */
+    fun releaseBackgroundEngines() {
+        viewModelScope.launch {
+            val frozen = repository.freezeAllExcept(activeTab.value?.id)
+            frozen.forEach(registry::release)
+        }
     }
 
     fun goBack(): Boolean = engineManager.goBack()

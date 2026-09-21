@@ -13,4 +13,14 @@ interface Engine {
     fun canGoBack(): Boolean
     fun canGoForward(): Boolean
     fun currentUrl(): String?
+
+    /** Tab becomes visible: resume rendering/timers. */
+    fun onShow()
+
+    /** Tab goes to background: pause rendering/timers, keep session. */
+    fun onHide()
+
+    /** Tab evicted: release native resources (WebContents). Session data
+     *  (URL/title) must already be persisted as TabState. */
+    fun destroy()
 }
