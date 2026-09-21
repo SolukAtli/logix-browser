@@ -40,5 +40,25 @@ class TabsRepository @Inject constructor(
         tabDao.setActive(id)
     }
 
+    suspend fun openUrl(id: String, url: String) {
+        tabDao.clearActive()
+        tabDao.upsert(
+            TabState(
+                id = id,
+                url = url,
+                title = hostOf(url),
+                isActive = true,
+                lastAccessed = System.currentTimeMillis(),
+            ),
+        )
+    }
+
     suspend fun activeTab(): TabState? = tabDao.activeTab()
+
+    private fun hostOf(url: String): String =
+        try {
+            java.net.URI(url).host ?: url.take(40)
+        } catch (e: Exception) {
+            url.take(40)
+        }
 }
