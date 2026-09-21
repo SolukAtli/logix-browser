@@ -18,6 +18,12 @@ class ChromiumEngineManager @Inject constructor() {
     private val _currentUrl = MutableStateFlow<String?>(null)
     val currentUrl: StateFlow<String?> = _currentUrl.asStateFlow()
 
+    /**
+     * Faz-4: wraps [fallback] with the native bridge when its libraries
+     * are present ([ChromiumEngine]), otherwise returns [fallback] as-is.
+     */
+    fun wrapNative(fallback: Engine): Engine = ChromiumEngine(fallback)
+
     fun bind(engine: Engine) {
         this.engine = engine
         _currentUrl.value = engine.currentUrl()
