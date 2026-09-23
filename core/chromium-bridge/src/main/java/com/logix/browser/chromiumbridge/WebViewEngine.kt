@@ -38,6 +38,10 @@ class WebViewEngine(private val webView: WebView) : Engine {
 
     override fun currentUrl(): String? = webView.url
 
+    override fun clearHistory() {
+        webView.clearHistory()
+    }
+
     override fun onShow() {
         webView.onResume()
         webView.resumeTimers()

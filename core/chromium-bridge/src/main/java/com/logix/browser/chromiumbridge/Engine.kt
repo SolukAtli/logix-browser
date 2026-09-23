@@ -14,6 +14,9 @@ interface Engine {
     fun canGoForward(): Boolean
     fun currentUrl(): String?
 
+    /** Drops the in-engine back/forward history (incognito entry). */
+    fun clearHistory()
+
     /** Tab becomes visible: resume rendering/timers. */
     fun onShow()
 

@@ -9,6 +9,7 @@ import com.logix.browser.chromiumbridge.MemoryPressureHandler
 import com.logix.browser.database.TabState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -43,6 +44,12 @@ class TabsViewModel @Inject constructor(
     val liveTabIds: StateFlow<Set<String>> = repository.liveTabIds
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
+    private val _canGoBack = MutableStateFlow(false)
+    val canGoBack: StateFlow<Boolean> = _canGoBack
+
+    private val _canGoForward = MutableStateFlow(false)
+    val canGoForward: StateFlow<Boolean> = _canGoForward
+
     init {
         viewModelScope.launch {
             if (repository.tabs.first().isEmpty()) {
@@ -65,8 +72,15 @@ class TabsViewModel @Inject constructor(
         engine.onShow()
     }
 
+    /** Called by the hosted view on every navigation commit. */
+    fun onNavigationStateChanged(canGoBack: Boolean, canGoForward: Boolean) {
+        _canGoBack.value = canGoBack
+        _canGoForward.value = canGoForward
+    }
+
     fun openInActiveTab(url: String) {
         viewModelScope.launch {
+            resetNavigationState()
             val current = activeTab.value
             val evicted = if (current == null) {
                 repository.createTab(url = url, title = hostOf(url))
@@ -80,11 +94,15 @@ class TabsViewModel @Inject constructor(
     }
 
     fun createTab() {
-        viewModelScope.launch { repository.createTab() }
+        viewModelScope.launch {
+            resetNavigationState()
+            repository.createTab()
+        }
     }
 
     fun closeTab(id: String) {
         viewModelScope.launch {
+            resetNavigationState()
             registry.release(id)
             repository.closeTab(id)
             val current = repository.tabs.first()
@@ -98,6 +116,7 @@ class TabsViewModel @Inject constructor(
 
     fun selectTab(id: String) {
         viewModelScope.launch {
+            resetNavigationState()
             val prevId = activeTab.value?.id
             if (prevId != null && prevId != id) {
                 registry.get(prevId)?.onHide()
@@ -134,6 +153,16 @@ class TabsViewModel @Inject constructor(
     fun goForward(): Boolean = engineManager.goForward()
 
     fun refresh() = engineManager.reload()
+
+    /** Drops the bound engine's back/forward list (incognito entry). */
+    fun clearActiveEngineHistory() {
+        activeTab.value?.id?.let { registry.get(it)?.clearHistory() }
+    }
+
+    private fun resetNavigationState() {
+        _canGoBack.value = false
+        _canGoForward.value = false
+    }
 
     private fun hostOf(url: String): String =
         try {

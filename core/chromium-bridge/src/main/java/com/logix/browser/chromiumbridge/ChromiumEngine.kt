@@ -37,6 +37,8 @@ class ChromiumEngine(
 
     override fun currentUrl(): String? = fallback.currentUrl()
 
+    override fun clearHistory() = fallback.clearHistory()
+
     override fun onShow() = fallback.onShow()
 
     override fun onHide() = fallback.onHide()

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import com.logix.browser.adblock.ApplicationScope
 import com.logix.browser.database.AdBlockStatsDao
+import com.logix.browser.database.BookmarkDao
 import com.logix.browser.database.BrowserDatabase
 import com.logix.browser.database.HistoryDao
 import com.logix.browser.database.SearchEngineDao
@@ -48,6 +49,9 @@ object AppModule {
 
     @Provides
     fun provideAdBlockStatsDao(db: BrowserDatabase): AdBlockStatsDao = db.adBlockStatsDao()
+
+    @Provides
+    fun provideBookmarkDao(db: BrowserDatabase): BookmarkDao = db.bookmarkDao()
 
     @Provides
     @Singleton
