@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Tab
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Badge
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -41,6 +42,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.rememberDrawerState
@@ -74,7 +76,6 @@ import com.logix.browser.tabs.ui.BookmarksSheet
 import com.logix.browser.tabs.ui.BrowserBottomBar
 import com.logix.browser.tabs.ui.HistorySheet
 import com.logix.browser.tabs.ui.NtpHome
-import com.logix.browser.tabs.ui.TabStripBar
 import com.logix.browser.tabs.ui.TabsSheet
 import com.logix.browser.ui.theme.LogixTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -122,6 +123,7 @@ private fun BrowserScreen(
     val selectedSettingsEngine by settingsVm.selectedEngine.collectAsStateWithLifecycle()
     val history by historyVm.recent.collectAsStateWithLifecycle()
     val bookmarks by bookmarksVm.bookmarks.collectAsStateWithLifecycle()
+    val deathTriggered by settingsVm.deathResetTriggered.collectAsStateWithLifecycle()
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val snackbar = remember { SnackbarHostState() }
@@ -339,26 +341,19 @@ private fun BrowserScreen(
             snackbarHost = { SnackbarHost(snackbar) },
             topBar = {
                 if (settings.barPosition != "bottom") {
-                    androidx.compose.foundation.layout.Column {
-                        TabStripBar(
-                            tabs = tabs,
-                            activeTabId = activeTab?.id,
-                            onSelect = tabsVm::selectTab,
-                            onClose = tabsVm::closeTab,
-                            onNewTab = { tabsVm.createTab() },
-                        )
-                        OmniboxBar(
-                            query = omniVm.query,
-                            onQueryChange = omniVm::onQueryChange,
-                            engines = omniVm.availableEngines,
-                            selectedEngine = selectedEngine,
-                            onSelectEngine = omniVm::selectEngine,
-                            onGo = { omniVm.resolve()?.let { tabsVm.openInActiveTab(it) } },
-                            incognito = settings.incognito,
-                            onMic = ::launchVoice,
-                            onCamera = ::launchImageSearch,
-                        )
-                    }
+                    OmniboxBar(
+                        query = omniVm.query,
+                        onQueryChange = omniVm::onQueryChange,
+                        engines = omniVm.availableEngines,
+                        selectedEngine = selectedEngine,
+                        onSelectEngine = omniVm::selectEngine,
+                        onGo = { omniVm.resolve()?.let { tabsVm.openInActiveTab(it) } },
+                        tabCount = tabs.size,
+                        onShowTabs = { showTabs = true },
+                        incognito = settings.incognito,
+                        onMic = ::launchVoice,
+                        onCamera = ::launchImageSearch,
+                    )
                 }
             },
             bottomBar = {
@@ -371,16 +366,11 @@ private fun BrowserScreen(
                             selectedEngine = selectedEngine,
                             onSelectEngine = omniVm::selectEngine,
                             onGo = { omniVm.resolve()?.let { tabsVm.openInActiveTab(it) } },
+                            tabCount = tabs.size,
+                            onShowTabs = { showTabs = true },
                             incognito = settings.incognito,
                             onMic = ::launchVoice,
                             onCamera = ::launchImageSearch,
-                        )
-                        TabStripBar(
-                            tabs = tabs,
-                            activeTabId = activeTab?.id,
-                            onSelect = tabsVm::selectTab,
-                            onClose = tabsVm::closeTab,
-                            onNewTab = { tabsVm.createTab() },
                         )
                     }
                     BrowserBottomBar(
@@ -445,6 +435,24 @@ private fun BrowserScreen(
             onClose = tabsVm::closeTab,
             onNewTab = { tabsVm.createTab(); showTabs = false },
             onDismiss = { showTabs = false },
+        )
+    }
+
+    if (deathTriggered) {
+        AlertDialog(
+            onDismissRequest = settingsVm::acknowledgeDeathReset,
+            title = { Text("Ölüm Anahtarı Tetiklendi") },
+            text = {
+                Text(
+                    "Tarayıcı uzun süre açılmadığı için koruma devreye girdi: " +
+                        "geçmiş, yer imleri, sekmeler, çerezler ve oturumlar silindi.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = settingsVm::acknowledgeDeathReset) {
+                    Text("Tamam")
+                }
+            },
         )
     }
 

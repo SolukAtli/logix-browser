@@ -39,6 +39,7 @@ class SettingsRepository @Inject constructor(
         val HTTPS_ONLY = booleanPreferencesKey("https_only")
         val DEATH_RESET_ENABLED = booleanPreferencesKey("death_reset_enabled")
         val DEATH_RESET_DAYS = intPreferencesKey("death_reset_days")
+        val LAST_ACTIVE_AT = longPreferencesKey("last_active_at")
         val BAR_POSITION = stringPreferencesKey("bar_position")
         val USER_AGENT = stringPreferencesKey("user_agent")
         val TEXT_SCALE = floatPreferencesKey("text_scale")
@@ -61,6 +62,7 @@ class SettingsRepository @Inject constructor(
                 httpsOnly = prefs[Keys.HTTPS_ONLY] ?: false,
                 deathResetEnabled = prefs[Keys.DEATH_RESET_ENABLED] ?: false,
                 deathResetDays = prefs[Keys.DEATH_RESET_DAYS] ?: 30,
+                lastActiveAt = prefs[Keys.LAST_ACTIVE_AT] ?: 0L,
                 barPosition = prefs[Keys.BAR_POSITION] ?: "top",
                 userAgent = prefs[Keys.USER_AGENT] ?: "mobile",
                 textScale = prefs[Keys.TEXT_SCALE] ?: 1f,
@@ -119,6 +121,11 @@ class SettingsRepository @Inject constructor(
 
     suspend fun setDeathResetDays(days: Int) {
         context.settingsDataStore.edit { it[Keys.DEATH_RESET_DAYS] = days.coerceIn(1, 365) }
+    }
+
+    /** Son aktif olma anı — ölüm anahtarı sayacı her açılışta buradan beslenir. */
+    suspend fun updateLastActive(now: Long = System.currentTimeMillis()) {
+        context.settingsDataStore.edit { it[Keys.LAST_ACTIVE_AT] = now }
     }
 
     suspend fun setBarPosition(position: String) {

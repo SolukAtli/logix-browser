@@ -51,9 +51,13 @@ class TabsViewModel @Inject constructor(
     val canGoForward: StateFlow<Boolean> = _canGoForward
 
     init {
+        // Sekme listesi her boşaldığında (ilk açılış, tek tek kapatma veya
+        // ölüm anahtarı imhası) taze bir sekme aç — tarayıcı sekmesiz kalmaz.
         viewModelScope.launch {
-            if (repository.tabs.first().isEmpty()) {
-                repository.createTab()
+            repository.tabs.collect { list ->
+                if (list.isEmpty()) {
+                    repository.createTab()
+                }
             }
         }
         viewModelScope.launch {

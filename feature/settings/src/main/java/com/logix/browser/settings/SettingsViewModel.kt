@@ -7,22 +7,24 @@ import com.logix.browser.search.SearchEngine
 import com.logix.browser.search.SearchEngineManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
  * Settings screen state over [SettingsRepository]; engine selection is kept
- * in sync with [SearchEngineManager]. Applies the death-reset retention
- * policy (purge history older than N days) on startup.
+ * in sync with [SearchEngineManager]. Her açılışta [DeathResetManager]
+ * çalışır; imha olduysa [deathResetTriggered] ile UI bilgilendirilir.
  */
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val repository: SettingsRepository,
     private val engines: SearchEngineManager,
     private val historyDao: HistoryDao,
+    private val deathReset: DeathResetManager,
 ) : ViewModel() {
 
     val settings: StateFlow<BrowserSettings> = repository.settings
@@ -31,15 +33,17 @@ class SettingsViewModel @Inject constructor(
     val availableEngines: List<SearchEngine> = engines.available
     val selectedEngine = engines.selected
 
+    private val _deathResetTriggered = MutableStateFlow(false)
+    val deathResetTriggered: StateFlow<Boolean> = _deathResetTriggered.asStateFlow()
+
     init {
         viewModelScope.launch {
-            val current = repository.settings.first()
-            if (current.deathResetEnabled) {
-                val cutoff = System.currentTimeMillis() -
-                    current.deathResetDays.coerceIn(1, 365) * 24L * 60L * 60L * 1000L
-                historyDao.deleteOlderThan(cutoff)
-            }
+            _deathResetTriggered.value = deathReset.onAppStart()
         }
+    }
+
+    fun acknowledgeDeathReset() {
+        _deathResetTriggered.value = false
     }
 
     fun setTheme(theme: String) {

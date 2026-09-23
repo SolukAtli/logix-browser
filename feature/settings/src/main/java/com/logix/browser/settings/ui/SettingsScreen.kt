@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -50,7 +51,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -268,185 +268,29 @@ fun SettingsScreen(
         }
 
         SectionHeader("Tehlikeli Bölge")
-        Card(
-            modifier = modifier
-                .fillMaxWidth()
-                .border(2.dp, MaterialTheme.colorScheme.error, GroupShape),
-            shape = GroupShape,
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-        ) {
-            Column(modifier = Modifier.padding(12.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Warning,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error,
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        "Ölümden Veri Sıfırlama",
-                        style = MaterialTheme.typography.titleSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                        ),
-                    )
-                }
-                Text(
-                    "Açıkken, belirlenen günden eski geçmiş kayıtları otomatik silinir.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Spacer(Modifier.height(8.dp))
-                SettingSwitch(
-                    label = if (settings.deathResetEnabled) "Etkin" else "Devre dışı",
-                    checked = settings.deathResetEnabled,
-                    onCheckedChange = { enabled ->
-                        if (enabled) showDeathDialog = true
-                        else onDeathResetChange(false)
-                    },
-                    icon = Icons.Default.DeleteForever,
-                    iconTint = MaterialTheme.colorScheme.error,
-                )
-                if (settings.deathResetEnabled) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = {
-                            onDeathResetDaysChange(settings.deathResetDays - 1)
-                        }) {
-                            Text("−")
-                        }
-                        Text("${settings.deathResetDays} gün")
-                        IconButton(onClick = {
-                            onDeathResetDaysChange(settings.deathResetDays + 1)
-                        }) {
-                            Text("+")
-                        }
-                    }
-                }
-            }
-        }
+        DeathResetCard(
+            enabled = settings.deathResetEnabled,
+            days = settings.deathResetDays,
+            onToggle = { on ->
+                if (on) showDeathDialog = true
+                else onDeathResetChange(false)
+            },
+            onDaysChange = onDeathResetDaysChange,
+            modifier = modifier,
+        )
         Spacer(Modifier.height(8.dp))
     }
 
     if (showDeathDialog) {
-        var dialogDays by remember { mutableStateOf(settings.deathResetDays.coerceIn(1, 365)) }
-        AlertDialog(
-            onDismissRequest = { showDeathDialog = false },
-            title = { Text("Ölümden Veri Sıfırlama") },
-            text = {
-                Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(72.dp)
-                                .shadow(
-                                    16.dp,
-                                    CircleShape,
-                                    ambientColor = MaterialTheme.colorScheme.error,
-                                    spotColor = MaterialTheme.colorScheme.error,
-                                )
-                                .clip(CircleShape)
-                                .background(
-                                    MaterialTheme.colorScheme.error.copy(alpha = 0.15f),
-                                ),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                Icons.Default.Warning,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(36.dp),
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(MaterialTheme.colorScheme.errorContainer)
-                            .border(
-                                1.dp,
-                                MaterialTheme.colorScheme.error.copy(alpha = 0.5f),
-                                RoundedCornerShape(16.dp),
-                            )
-                            .padding(12.dp),
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                Icons.Default.Warning,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error,
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                "DİKKAT: Belirlediğiniz süre boyunca tarayıcıyı hiç açmazsanız; " +
-                                    "tüm tarama geçmişiniz, çerezler, kayıtlı veriler ve oturumlar " +
-                                    "GERİ DÖNDÜRÜLEMEZ ŞEKİLDE kalıcı olarak imha edilecektir.",
-                                style = MaterialTheme.typography.bodySmall,
-                                textAlign = TextAlign.Center,
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(16.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
-                    ) {
-                        IconButton(onClick = {
-                            dialogDays = (dialogDays - 1).coerceAtLeast(1)
-                        }) {
-                            Text(
-                                "−",
-                                style = MaterialTheme.typography.headlineMedium,
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .padding(horizontal = 16.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                                .border(
-                                    1.dp,
-                                    MaterialTheme.colorScheme.primary,
-                                    RoundedCornerShape(16.dp),
-                                )
-                                .padding(horizontal = 24.dp, vertical = 12.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                "$dialogDays Gün",
-                                style = MaterialTheme.typography.headlineSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                ),
-                            )
-                        }
-                        IconButton(onClick = {
-                            dialogDays = (dialogDays + 1).coerceAtMost(365)
-                        }) {
-                            Text(
-                                "+",
-                                style = MaterialTheme.typography.headlineMedium,
-                            )
-                        }
-                    }
-                }
+        DeathResetConfirmDialog(
+            days = settings.deathResetDays,
+            onDaysChange = onDeathResetDaysChange,
+            onConfirm = { finalDays ->
+                onDeathResetDaysChange(finalDays)
+                onDeathResetChange(true)
+                showDeathDialog = false
             },
-            confirmButton = {
-                Button(onClick = {
-                    onDeathResetDaysChange(dialogDays)
-                    onDeathResetChange(true)
-                    showDeathDialog = false
-                }) {
-                    Text("Sistemi Etkinleştir")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeathDialog = false }) {
-                    Text("Vazgeç")
-                }
-            },
+            onDismiss = { showDeathDialog = false },
         )
     }
 
@@ -460,6 +304,196 @@ fun SettingsScreen(
             onDismiss = { showCustomAccent = false },
         )
     }
+}
+
+/**
+ * Ölüm Anahtarı kartı: ne işe yarar + neden tehlikeli + açma/kapama + gün seçimi.
+ */
+@Composable
+private fun DeathResetCard(
+    enabled: Boolean,
+    days: Int,
+    onToggle: (Boolean) -> Unit,
+    onDaysChange: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .border(2.dp, MaterialTheme.colorScheme.error, GroupShape),
+        shape = GroupShape,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.error),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onError,
+                        modifier = Modifier.size(26.dp),
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Ölüm Anahtarı",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                        ),
+                    )
+                    Text(
+                        "ÇOK TEHLİKELİ",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                        ),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "Bu özellik ne işe yarar?",
+                style = MaterialTheme.typography.titleSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                ),
+            )
+            Text(
+                "Tarayıcıyı $days günden uzun süre hiç açmazsan, bir sonraki açılışta " +
+                    "tüm verilerin otomatik olarak imha edilir. Her açılışında sayaç sıfırlanır.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Neden tehlikeli?",
+                style = MaterialTheme.typography.titleSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                ),
+            )
+            Text(
+                "• Tarama geçmişin silinir\n" +
+                    "• Yer imlerin silinir\n" +
+                    "• Açık sekmelerin kapanır\n" +
+                    "• Çerezlerin ve tüm oturumların (hesap girişlerin) silinir\n" +
+                    "• GERİ DÖNÜŞ YOKTUR",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Spacer(Modifier.height(8.dp))
+            SettingSwitch(
+                label = if (enabled) "Etkin — sayaç işliyor" else "Devre dışı",
+                checked = enabled,
+                onCheckedChange = onToggle,
+                icon = Icons.Default.DeleteForever,
+                iconTint = MaterialTheme.colorScheme.error,
+            )
+            if (enabled) {
+                Spacer(Modifier.height(4.dp))
+                DayStepper(days = days, onDaysChange = onDaysChange)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DayStepper(
+    days: Int,
+    onDaysChange: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        IconButton(onClick = { onDaysChange(days - 1) }) {
+            Text("−", style = MaterialTheme.typography.headlineMedium)
+        }
+        Box(
+            modifier = Modifier
+                .padding(horizontal = 16.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .border(
+                    1.dp,
+                    MaterialTheme.colorScheme.error,
+                    RoundedCornerShape(16.dp),
+                )
+                .padding(horizontal = 24.dp, vertical = 12.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                "$days Gün",
+                style = MaterialTheme.typography.headlineSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                ),
+            )
+        }
+        IconButton(onClick = { onDaysChange(days + 1) }) {
+            Text("+", style = MaterialTheme.typography.headlineMedium)
+        }
+    }
+}
+
+@Composable
+private fun DeathResetConfirmDialog(
+    days: Int,
+    onDaysChange: (Int) -> Unit,
+    onConfirm: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var dialogDays by remember { mutableStateOf(days.coerceIn(1, 365)) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                )
+                Spacer(Modifier.width(8.dp))
+                Text("Ölüm Anahtarını Aç")
+            }
+        },
+        text = {
+            Column {
+                Text(
+                    "Tarayıcıyı seçtiğin gün sayısı boyunca hiç açmazsan; " +
+                        "geçmişin, yer imlerin, sekmelerin, çerezlerin ve oturumların " +
+                        "KALICI OLARAK silinir. Bu işlem geri alınamaz.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(16.dp))
+                DayStepper(
+                    days = dialogDays,
+                    onDaysChange = { dialogDays = it.coerceIn(1, 365) },
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(dialogDays) },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError,
+                ),
+            ) {
+                Text("Anladım, Etkinleştir")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Vazgeç")
+            }
+        },
+    )
 }
 
 @Composable

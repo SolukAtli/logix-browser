@@ -14,6 +14,7 @@ appcompat = "1.7.1"
 coroutines = "1.10.2"
 javaxInject = "1"
 junit = "4.13.2"
+androidsvg = "1.4"
 compileSdk = "36"
 minSdk = "24"
 targetSdk = "36"
@@ -40,6 +41,7 @@ room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "
 room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+androidsvg = { group = "com.caverock", name = "androidsvg", version.ref = "androidsvg" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

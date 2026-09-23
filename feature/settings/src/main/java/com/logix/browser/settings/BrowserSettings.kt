@@ -17,6 +17,7 @@ data class BrowserSettings(
     val httpsOnly: Boolean = false,
     val deathResetEnabled: Boolean = false,
     val deathResetDays: Int = 30,
+    val lastActiveAt: Long = 0L,
     val barPosition: String = "top",
     val userAgent: String = "mobile",
     val textScale: Float = 1f,

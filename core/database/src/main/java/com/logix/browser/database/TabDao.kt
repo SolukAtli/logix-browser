@@ -20,6 +20,9 @@ interface TabDao {
     @Query("DELETE FROM tabs WHERE id = :id")
     suspend fun deleteById(id: String)
 
+    @Query("DELETE FROM tabs")
+    suspend fun clearAll()
+
     @Query("UPDATE tabs SET isActive = 0")
     suspend fun clearActive()
 
