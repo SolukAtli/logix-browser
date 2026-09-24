@@ -145,22 +145,19 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { repository.setQuickClearBookmarks(enabled) }
     }
 
-    /** Ayarlarda seçili kapsamda temizler; bitince [onDone] çağrılır. */
-    fun quickClearAll(onDone: () -> Unit = {}) {
-        viewModelScope.launch {
-            val current = repository.settings.first()
-            if (current.quickClearHistory) historyDao.clearAll()
-            if (current.quickClearBookmarks) bookmarkDao.clearAll()
-            if (current.quickClearCookies) {
-                runCatching {
-                    CookieManager.getInstance().removeAllCookies(null)
-                    CookieManager.getInstance().flush()
-                }
+    /** Ayarlarda seçili kapsamda temizler. Suspend: bitmeden dönmez. */
+    suspend fun quickClearAll() {
+        val current = repository.settings.first()
+        if (current.quickClearHistory) historyDao.clearAll()
+        if (current.quickClearBookmarks) bookmarkDao.clearAll()
+        if (current.quickClearCookies) {
+            runCatching {
+                CookieManager.getInstance().removeAllCookies(null)
+                CookieManager.getInstance().flush()
             }
-            if (current.quickClearCache) {
-                runCatching { WebStorage.getInstance().deleteAllData() }
-            }
-            onDone()
+        }
+        if (current.quickClearCache) {
+            runCatching { WebStorage.getInstance().deleteAllData() }
         }
     }
 }

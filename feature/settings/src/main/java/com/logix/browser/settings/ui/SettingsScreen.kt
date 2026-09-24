@@ -54,11 +54,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.logix.browser.search.SearchEngine
 import com.logix.browser.settings.BrowserSettings
 
@@ -535,48 +537,89 @@ private fun DeathResetConfirmDialog(
     onDismiss: () -> Unit,
 ) {
     var dialogDays by remember { mutableStateOf(days.coerceIn(1, 365)) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = {
-            Icon(
-                Icons.Default.Warning,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.error,
-            )
-        },
-        title = { Text("Emin misin?", textAlign = TextAlign.Center) },
-        text = {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    "Bu süre boyunca uygulamayı hiç açmazsan her şeyin silinir. " +
-                        "Geri dönüşü yok.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center,
-                )
-                Spacer(Modifier.height(16.dp))
-                DayStepper(
-                    days = dialogDays,
-                    onDaysChange = { dialogDays = it.coerceIn(1, 365) },
-                )
+    Dialog(onDismissRequest = onDismiss) {
+        Card(shape = RoundedCornerShape(28.dp)) {
+            Column {
+                // Kırmızı başlık şeridi.
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    MaterialTheme.colorScheme.error,
+                                    MaterialTheme.colorScheme.error.copy(alpha = 0.75f),
+                                ),
+                            ),
+                        )
+                        .padding(vertical = 24.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(
+                            modifier = Modifier
+                                .size(64.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    MaterialTheme.colorScheme.onError.copy(alpha = 0.25f),
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onError,
+                                modifier = Modifier.size(34.dp),
+                            )
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            "Ölüm Anahtarı",
+                            style = MaterialTheme.typography.headlineSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                            ),
+                            color = MaterialTheme.colorScheme.onError,
+                        )
+                        Text(
+                            "Geri dönüşü yok",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onError.copy(alpha = 0.85f),
+                        )
+                    }
+                }
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        "Bu süre boyunca uygulamayı hiç açmazsan; geçmişin, " +
+                            "yer imlerin, sekmelerin, çerezlerin ve oturumların silinir.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    DayStepper(
+                        days = dialogDays,
+                        onDaysChange = { dialogDays = it.coerceIn(1, 365) },
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Button(
+                        onClick = { onConfirm(dialogDays) },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError,
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Anladım, Etkinleştir")
+                    }
+                    TextButton(onClick = onDismiss) {
+                        Text("Vazgeç")
+                    }
+                }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onConfirm(dialogDays) },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error,
-                    contentColor = MaterialTheme.colorScheme.onError,
-                ),
-            ) {
-                Text("Anladım, Etkinleştir")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Vazgeç")
-            }
-        },
-    )
+        }
+    }
 }
 
 @Composable

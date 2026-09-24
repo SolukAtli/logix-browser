@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import com.logix.browser.adblock.AdBlockStatsRepository
 import com.logix.browser.adblock.CosmeticFilter
@@ -85,6 +86,13 @@ fun ContentViewHost(
     desktopMode: Boolean = false,
 ) {
     var privacyKey by remember { mutableStateOf(PrivacyKey(incognito, cookiesAccepted, userAgent, shields, desktopMode)) }
+    // Kalkan DI'ı hazır değilse sayfa kalkansız açılır, çökmez.
+    val appContext = LocalContext.current.applicationContext
+    val entry = remember {
+        runCatching {
+            EntryPointAccessors.fromApplication(appContext, ShieldsEntryPoint::class.java)
+        }.getOrNull()
+    }
     val latestFileChooser by rememberUpdatedState(onFileChooserRequest)
     val latestNavState by rememberUpdatedState(onNavigationStateChanged)
     val latestProgress by rememberUpdatedState(onProgressChanged)
@@ -94,10 +102,6 @@ fun ContentViewHost(
     AndroidView(
         modifier = modifier,
         factory = { context ->
-            val entry = EntryPointAccessors.fromApplication(
-                context.applicationContext,
-                ShieldsEntryPoint::class.java,
-            )
             WebView(context).apply {
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
@@ -118,6 +122,7 @@ fun ContentViewHost(
                         request: WebResourceRequest,
                     ): WebResourceResponse? {
                         return try {
+                            val shieldEntry = entry ?: return null
                             val cfg = latestShields
                             if (!cfg.adBlock && !cfg.trackerBlock) return null
                             val urlStr = request.url.toString()
@@ -125,11 +130,11 @@ fun ContentViewHost(
                                 return null
                             }
                             val host = request.url.host ?: return null
-                            if (!entry.adBlocker().shouldBlock(host)) return null
-                            val isTracker = entry.adBlocker().isTracker(host)
+                            if (!shieldEntry.adBlocker().shouldBlock(host)) return null
+                            val isTracker = shieldEntry.adBlocker().isTracker(host)
                             if (isTracker && !cfg.trackerBlock) return null
                             if (!isTracker && !cfg.adBlock) return null
-                            entry.stats().recordBlocked(isTracker)
+                            shieldEntry.stats().recordBlocked(isTracker)
                             blockedResponse()
                         } catch (e: Exception) {
                             null
@@ -140,14 +145,18 @@ fun ContentViewHost(
                         view: WebView,
                         request: WebResourceRequest,
                     ): Boolean {
-                        if (latestShields.httpsOnly && request.isForMainFrame) {
-                            val upgraded = entry.httpsUpgrader().upgraded(request.url.toString())
+                        if (!latestShields.httpsOnly || !request.isForMainFrame) return false
+                        return try {
+                            val upgraded = entry?.httpsUpgrader()?.upgraded(request.url.toString())
                             if (upgraded != null) {
                                 view.loadUrl(upgraded)
-                                return true
+                                true
+                            } else {
+                                false
                             }
+                        } catch (e: Exception) {
+                            false
                         }
-                        return false
                     }
 
                     override fun onPageFinished(view: WebView, url: String) {
@@ -157,10 +166,11 @@ fun ContentViewHost(
                             latestVisited(url, view.title.orEmpty())
                         }
                         try {
+                            val cosmeticEntry = entry
                             val cfg = latestShields
-                            if (cfg.adBlock || cfg.trackerBlock) {
-                                val script = entry.cosmetic()
-                                    .buildScript(entry.adBlocker().cosmeticSelectors())
+                            if (cosmeticEntry != null && (cfg.adBlock || cfg.trackerBlock)) {
+                                val script = cosmeticEntry.cosmetic()
+                                    .buildScript(cosmeticEntry.adBlocker().cosmeticSelectors())
                                 if (script.isNotEmpty()) {
                                     view.evaluateJavascript(script, null)
                                 }
@@ -229,23 +239,25 @@ fun ContentViewHost(
  * normal modda çerez anahtarı ayarlardan gelir.
  */
 private fun applyPrivacy(view: WebView, incognito: Boolean, cookiesAccepted: Boolean) {
-    val cookies = CookieManager.getInstance()
-    if (incognito) {
-        view.clearHistory()
-        view.clearFormData()
-        view.clearCache(true)
-        cookies.setAcceptCookie(false)
-        view.settings.saveFormData = false
-        view.settings.databaseEnabled = false
-        view.settings.cacheMode = WebSettings.LOAD_NO_CACHE
-    } else {
-        cookies.setAcceptCookie(cookiesAccepted)
-        runCatching {
-            CookieManager.getInstance().setAcceptThirdPartyCookies(view, cookiesAccepted)
+    runCatching {
+        val cookies = CookieManager.getInstance()
+        if (incognito) {
+            view.clearHistory()
+            view.clearFormData()
+            view.clearCache(true)
+            cookies.setAcceptCookie(false)
+            view.settings.saveFormData = false
+            view.settings.databaseEnabled = false
+            view.settings.cacheMode = WebSettings.LOAD_NO_CACHE
+        } else {
+            cookies.setAcceptCookie(cookiesAccepted)
+            runCatching {
+                CookieManager.getInstance().setAcceptThirdPartyCookies(view, cookiesAccepted)
+            }
+            view.settings.saveFormData = true
+            view.settings.databaseEnabled = true
+            view.settings.cacheMode = WebSettings.LOAD_DEFAULT
         }
-        view.settings.saveFormData = true
-        view.settings.databaseEnabled = true
-        view.settings.cacheMode = WebSettings.LOAD_DEFAULT
     }
 }
 

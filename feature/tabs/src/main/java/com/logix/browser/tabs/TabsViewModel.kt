@@ -60,9 +60,14 @@ class TabsViewModel @Inject constructor(
         // Sekme listesi her boşaldığında (ilk açılış, tek tek kapatma veya
         // ölüm anahtarı imhası) taze bir sekme aç — tarayıcı sekmesiz kalmaz.
         viewModelScope.launch {
-            repository.tabs.collect { list ->
-                if (list.isEmpty()) {
-                    repository.createTab()
+            runCatching {
+                repository.tabs.collect { list ->
+                    if (list.isEmpty()) {
+                        repository.createTab()
+                    }
+                    // Kapanmış sekmelerin önizlemelerini bellekten at.
+                    val live = list.map { it.id }.toSet()
+                    _thumbnails.value = _thumbnails.value.filterKeys { it in live }
                 }
             }
         }
@@ -172,12 +177,16 @@ class TabsViewModel @Inject constructor(
     /** Aktif sekmenin o anki görünümünü önizleme olarak yakalar. */
     fun refreshThumbnail() {
         viewModelScope.launch {
-            val id = activeTab.value?.id ?: return@launch
-            val bmp = withContext(Dispatchers.Main) {
-                engineManager.captureActiveThumbnail()
-            }
+            val tab = activeTab.value
+            // Sayfa yoksa (yeni sekme) yakalanacak WebView yoktur.
+            if (tab == null || tab.url.isNullOrEmpty()) return@launch
+            val bmp = runCatching {
+                withContext(Dispatchers.Main) {
+                    engineManager.captureActiveThumbnail()
+                }
+            }.getOrNull()
             if (bmp != null) {
-                _thumbnails.value = _thumbnails.value + (id to bmp)
+                _thumbnails.value = _thumbnails.value + (tab.id to bmp)
             }
         }
     }
