@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DesktopWindows
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -126,6 +127,7 @@ import com.logix.browser.tabs.ui.SiteSettingsSheet
 import com.logix.browser.tabs.ui.TabsSheet
 import com.logix.browser.ui.theme.LogixTheme
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -199,6 +201,7 @@ private fun BrowserScreen(
     val deathTriggered by settingsVm.deathResetTriggered.collectAsStateWithLifecycle()
     val thumbnails by tabsVm.thumbnails.collectAsStateWithLifecycle()
     val shieldTotals by settingsVm.shieldTotals.collectAsStateWithLifecycle()
+    val onboarded by settingsVm.onboarded.collectAsStateWithLifecycle()
     val siteOverrides by siteVm.overrides.collectAsStateWithLifecycle()
     val filterRefreshing by settingsVm.filterRefreshing.collectAsStateWithLifecycle()
 
@@ -366,15 +369,8 @@ private fun BrowserScreen(
         }
     }
 
-    // Hızlı temizleme animasyonu: çalış → bitti → kendiliğinden kapan.
-    LaunchedEffect(quickClearPhase) {
-        if (quickClearPhase == 1) {
-            settingsVm.quickClearAll()
-            quickClearPhase = 2
-            kotlinx.coroutines.delay(1300)
-            quickClearPhase = 0
-        }
-    }
+    // Hızlı temizleme LaunchedEffect YOK: faz değişimi efekti iptal edip
+    // yazıyı takılı bırakıyordu; akış drawer tıklamasında tek coroutine'de.
 
     // Back-stack priority (mutually exclusive):
     // 1. open sheet/dialog, 2. web history, 3. close tab,
@@ -452,6 +448,17 @@ private fun BrowserScreen(
                     onClick = {
                         scope.launch { drawerState.close() }
                         showHistory = true
+                    },
+                )
+                DrawerEntry(
+                    label = "İndirilenler",
+                    icon = Icons.Default.Download,
+                    onClick = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS),
+                            )
+                        }
                     },
                 )
                 DrawerEntry(
@@ -534,7 +541,13 @@ private fun BrowserScreen(
                     icon = Icons.Default.Delete,
                     onClick = {
                         scope.launch { drawerState.close() }
-                        quickClearPhase = 1
+                        scope.launch {
+                            quickClearPhase = 1
+                            settingsVm.quickClearAll()
+                            quickClearPhase = 2
+                            delay(1300)
+                            quickClearPhase = 0
+                        }
                     },
                 )
                 DrawerEntry(
@@ -637,7 +650,13 @@ private fun BrowserScreen(
                         onForward = { tabsVm.goForward() },
                         onHome = { tabsVm.createTab() },
                         onRefresh = { tabsVm.refresh() },
-                        onShowMenu = { scope.launch { drawerState.open() } },
+                        // Menü düğmesi aç/kapa: açık menüde basınca kapanır.
+                        onShowMenu = {
+                            scope.launch {
+                                if (drawerState.isOpen) drawerState.close()
+                                else drawerState.open()
+                            }
+                        },
                         incognito = settings.incognito,
                     )
                 }
@@ -700,17 +719,17 @@ private fun BrowserScreen(
                         onFileChooserRequest = { callback, params ->
                             fileChooserCallback?.onReceiveValue(null)
                             fileChooserCallback = callback
+                            // Önce sitenin istediği seçici, olmazsa genel dosya seçici.
                             val intent = runCatching { params?.createIntent() }.getOrNull()
-                            if (intent != null) {
-                                runCatching { fileChooserLauncher.launch(intent) }
-                                    .onFailure {
-                                        fileChooserCallback?.onReceiveValue(null)
-                                        fileChooserCallback = null
-                                    }
-                            } else {
-                                fileChooserCallback?.onReceiveValue(null)
-                                fileChooserCallback = null
-                            }
+                                ?: Intent(Intent.ACTION_GET_CONTENT).apply {
+                                    type = "*/*"
+                                    addCategory(Intent.CATEGORY_OPENABLE)
+                                }
+                            runCatching { fileChooserLauncher.launch(intent) }
+                                .onFailure {
+                                    fileChooserCallback?.onReceiveValue(null)
+                                    fileChooserCallback = null
+                                }
                         },
                         onFindResult = { active, total -> findResult = active to total },
                         onPermissionRequest = { origin, resources, decide ->
@@ -821,7 +840,7 @@ private fun BrowserScreen(
                             .clip(CircleShape)
                             .background(
                                 if (quickClearPhase == 2) {
-                                    MaterialTheme.colorScheme.primaryContainer
+                                    AccentPalette.colorFor(settings.accent)
                                 } else {
                                     MaterialTheme.colorScheme.surfaceContainerHigh
                                 },
@@ -834,7 +853,7 @@ private fun BrowserScreen(
                             Icon(
                                 Icons.Default.Check,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                tint = MaterialTheme.colorScheme.onPrimary,
                                 modifier = Modifier
                                     .size(40.dp)
                                     .scale(pop),
@@ -902,7 +921,7 @@ private fun BrowserScreen(
         )
     }
 
-    if (!settings.onboarded) {
+    if (!onboarded) {
         AlertDialog(
             onDismissRequest = {},
             title = { Text("Logix'e hoş geldin") },

@@ -135,8 +135,19 @@ class TabsViewModel @Inject constructor(
         viewModelScope.launch {
             resetNavigationState()
             val prevId = activeTab.value?.id
-            if (prevId != null && prevId != id && !playbackGate.keepAudioInBackground) {
-                registry.get(prevId)?.onHide()
+            if (prevId != null && prevId != id) {
+                // Ayrıldığımız sekmenin görüntüsünü sakla (önizleme için).
+                val prevThumb = runCatching {
+                    withContext(Dispatchers.Main) {
+                        registry.get(prevId)?.captureThumbnail()
+                    }
+                }.getOrNull()
+                if (prevThumb != null) {
+                    _thumbnails.value = _thumbnails.value + (prevId to prevThumb)
+                }
+                if (!playbackGate.keepAudioInBackground) {
+                    registry.get(prevId)?.onHide()
+                }
             }
             val evicted = repository.selectTab(id)
             evicted.forEach(registry::release)

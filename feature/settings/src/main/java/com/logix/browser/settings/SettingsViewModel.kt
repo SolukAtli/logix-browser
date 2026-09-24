@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -40,6 +41,11 @@ class SettingsViewModel @Inject constructor(
 
     val shieldTotals: StateFlow<AdBlockStatsRepository.Totals> = stats.totals
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AdBlockStatsRepository.Totals(0, 0))
+
+    // Başlangıçta true: veri gelene kadar karşılama yanıp sönmez.
+    val onboarded: StateFlow<Boolean> = repository.settings
+        .map { it.onboarded }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
 
     val availableEngines: List<SearchEngine> = engines.available
     val selectedEngine = engines.selected

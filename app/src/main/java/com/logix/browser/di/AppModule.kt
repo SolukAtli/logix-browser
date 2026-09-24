@@ -8,6 +8,7 @@ import com.logix.browser.database.BookmarkDao
 import com.logix.browser.database.BrowserDatabase
 import com.logix.browser.database.DomainSettingsDao
 import com.logix.browser.database.HistoryDao
+import com.logix.browser.database.MIGRATION_3_4
 import com.logix.browser.database.SearchEngineDao
 import com.logix.browser.database.TabDao
 import com.logix.browser.network.NoopSafeBrowsingClient
@@ -37,7 +38,9 @@ object AppModule {
             context,
             BrowserDatabase::class.java,
             "logix-browser.db",
-        ).fallbackToDestructiveMigration().build()
+        ).addMigrations(MIGRATION_3_4)
+            .fallbackToDestructiveMigrationOnDowngrade()
+            .build()
 
     @Provides
     fun provideTabDao(db: BrowserDatabase): TabDao = db.tabDao()

@@ -24,11 +24,14 @@ class FilterUpdater @Inject constructor(
         private const val STALE_AFTER_MS = 7L * 24L * 60L * 60L * 1000L
     }
 
-    /** Listeler bayatsa indirir; sonuç true ise güncellendi. */
+    /** Listeler bayatsa (veya hiç inmediyse) indirir; sonuç true ise güncellendi. */
     suspend fun updateIfStale(): Boolean = withContext(Dispatchers.IO) {
         runCatching {
             val last = repository.filterUpdatedAt()
-            if (System.currentTimeMillis() - last < STALE_AFTER_MS) return@runCatching false
+            val neverFetched = last <= 0L
+            if (!neverFetched && System.currentTimeMillis() - last < STALE_AFTER_MS) {
+                return@runCatching false
+            }
             updateNow()
         }.getOrDefault(false)
     }

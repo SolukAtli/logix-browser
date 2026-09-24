@@ -14,6 +14,7 @@ import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
+import android.webkit.WebResourceError
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -108,6 +109,9 @@ fun ContentViewHost(
     siteAdBlock: Boolean? = null,
 ) {
     var privacyKey by remember { mutableStateOf(PrivacyKey(incognito, cookiesAccepted, userAgent, shields, desktopMode, siteJsEnabled)) }
+    // İstenen URL'yi gerçekten yükledik mi? Aynı URL'yi tekrar tekrar
+    // yükleyip sayfayı bozmayı engeller (yeniden çizim döngüleri).
+    var lastLoaded by remember { mutableStateOf<String?>(null) }
     // Kalkan DI'ı hazır değilse sayfa kalkansız açılır, çökmez.
     val appContext = LocalContext.current.applicationContext
     val entry = remember {
@@ -236,6 +240,17 @@ fun ContentViewHost(
                         if (view != null) report(view)
                     }
 
+                    override fun onReceivedError(
+                        view: WebView,
+                        request: WebResourceRequest,
+                        error: WebResourceError,
+                    ) {
+                        // Ana sayfa yüklenemediyse kilidi aç: yenileme tekrar deneyebilsin.
+                        if (request.isForMainFrame) {
+                            lastLoaded = null
+                        }
+                    }
+
                     override fun onReceivedSslError(
                         view: WebView,
                         handler: SslErrorHandler,
@@ -334,7 +349,8 @@ fun ContentViewHost(
             }
             if (reloadNeeded) {
                 view.reload()
-            } else if (view.url != url) {
+            } else if (view.url != url && lastLoaded != url) {
+                lastLoaded = url
                 view.loadUrl(url, gpcHeaders())
             }
         },
