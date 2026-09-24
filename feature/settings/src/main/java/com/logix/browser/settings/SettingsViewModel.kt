@@ -4,6 +4,7 @@ import android.webkit.CookieManager
 import android.webkit.WebStorage
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.logix.browser.adblock.AdBlockStatsRepository
 import com.logix.browser.database.BookmarkDao
 import com.logix.browser.database.HistoryDao
 import com.logix.browser.search.SearchEngine
@@ -30,10 +31,15 @@ class SettingsViewModel @Inject constructor(
     private val historyDao: HistoryDao,
     private val bookmarkDao: BookmarkDao,
     private val deathReset: DeathResetManager,
+    private val filterUpdater: FilterUpdater,
+    stats: AdBlockStatsRepository,
 ) : ViewModel() {
 
     val settings: StateFlow<BrowserSettings> = repository.settings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BrowserSettings())
+
+    val shieldTotals: StateFlow<AdBlockStatsRepository.Totals> = stats.totals
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AdBlockStatsRepository.Totals(0, 0))
 
     val availableEngines: List<SearchEngine> = engines.available
     val selectedEngine = engines.selected
@@ -41,9 +47,19 @@ class SettingsViewModel @Inject constructor(
     private val _deathResetTriggered = MutableStateFlow(false)
     val deathResetTriggered: StateFlow<Boolean> = _deathResetTriggered.asStateFlow()
 
+    private val _filterRefreshing = MutableStateFlow(false)
+    val filterRefreshing: StateFlow<Boolean> = _filterRefreshing.asStateFlow()
+
     init {
         viewModelScope.launch {
             _deathResetTriggered.value = deathReset.onAppStart()
+        }
+        viewModelScope.launch {
+            if (repository.settings.first().filterAutoUpdate) {
+                _filterRefreshing.value = true
+                filterUpdater.updateIfStale()
+                _filterRefreshing.value = false
+            }
         }
     }
 
@@ -79,7 +95,11 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun refreshFilters() {
-        viewModelScope.launch { repository.markFiltersUpdated() }
+        viewModelScope.launch {
+            _filterRefreshing.value = true
+            filterUpdater.updateNow()
+            _filterRefreshing.value = false
+        }
     }
 
     fun setAccent(value: String) {
@@ -143,6 +163,18 @@ class SettingsViewModel @Inject constructor(
 
     fun setQuickClearBookmarks(enabled: Boolean) {
         viewModelScope.launch { repository.setQuickClearBookmarks(enabled) }
+    }
+
+    fun setBackgroundAudio(enabled: Boolean) {
+        viewModelScope.launch { repository.setBackgroundAudio(enabled) }
+    }
+
+    fun setOnboarded() {
+        viewModelScope.launch { repository.setOnboarded() }
+    }
+
+    fun markUpdateChecked() {
+        viewModelScope.launch { repository.markUpdateChecked() }
     }
 
     /** Ayarlarda seçili kapsamda temizler. Suspend: bitmeden dönmez. */

@@ -7,6 +7,7 @@ import com.logix.browser.chromiumbridge.ChromiumEngineManager
 import com.logix.browser.chromiumbridge.Engine
 import com.logix.browser.chromiumbridge.EngineRegistry
 import com.logix.browser.chromiumbridge.MemoryPressureHandler
+import com.logix.browser.chromiumbridge.PlaybackGate
 import com.logix.browser.database.TabState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -34,6 +35,7 @@ class TabsViewModel @Inject constructor(
     private val repository: TabsRepository,
     private val engineManager: ChromiumEngineManager,
     private val registry: EngineRegistry,
+    private val playbackGate: PlaybackGate,
     memoryPressure: MemoryPressureHandler,
 ) : ViewModel() {
 
@@ -133,7 +135,7 @@ class TabsViewModel @Inject constructor(
         viewModelScope.launch {
             resetNavigationState()
             val prevId = activeTab.value?.id
-            if (prevId != null && prevId != id) {
+            if (prevId != null && prevId != id && !playbackGate.keepAudioInBackground) {
                 registry.get(prevId)?.onHide()
             }
             val evicted = repository.selectTab(id)
@@ -169,9 +171,43 @@ class TabsViewModel @Inject constructor(
 
     fun refresh() = engineManager.reload()
 
+    /** Sayfada bul: boş metin vurguyu temizler. */
+    fun findAll(text: String?) = engineManager.findAll(text)
+
+    fun findNext(forward: Boolean) = engineManager.findNext(forward)
+
+    /** Makale metnini çıkarır (okuyucu modu); yoksa null. */
+    fun readArticle(onResult: (title: String, text: String?) -> Unit) {
+        val title = activeTab.value?.title.orEmpty()
+        viewModelScope.launch(Dispatchers.Main) {
+            engineManager.evaluateJs(READER_JS) { raw ->
+                onResult(title, parseJsString(raw))
+            }
+        }
+    }
+
+    companion object {
+        private const val READER_JS =
+            "(function(){var ps=[];var els=document.querySelectorAll('article p,main p,p');" +
+                "for(var i=0;i<els.length&&ps.length<200;i++){" +
+                "var s=els[i].innerText.trim();if(s.length>40)ps.push(s);}" +
+                "return ps.join('\\n\\n');})()"
+
+        private fun parseJsString(raw: String?): String? {
+            if (raw.isNullOrBlank() || raw == "null" || raw == "\"\"") return null
+            return runCatching {
+                org.json.JSONTokener(raw).nextValue() as? String
+            }.getOrNull()?.takeIf { it.isNotBlank() }
+        }
+    }
+
     /** Drops the bound engine's back/forward list (incognito entry). */
     fun clearActiveEngineHistory() {
         activeTab.value?.id?.let { registry.get(it)?.clearHistory() }
+    }
+
+    fun setKeepAudio(enabled: Boolean) {
+        playbackGate.keepAudioInBackground = enabled
     }
 
     /** Aktif sekmenin o anki görünümünü önizleme olarak yakalar. */

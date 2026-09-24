@@ -35,6 +35,39 @@ class BookmarksViewModel @Inject constructor(
         viewModelScope.launch { bookmarkDao.deleteByUrl(url) }
     }
 
+    fun addAll(entries: List<Pair<String, String>>) {
+        viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            entries.filter { it.first.isNotBlank() }.forEach { (url, title) ->
+                bookmarkDao.upsert(
+                    Bookmark(url = url, title = title.ifBlank { url }, createdAt = now),
+                )
+            }
+        }
+    }
+
+    fun importHtml(html: String): Int {
+        var count = 0
+        val regex = Regex(
+            "<A[^>]+HREF=\"([^\"]+)\"[^>]*>([^<]*)</A>",
+            RegexOption.IGNORE_CASE,
+        )
+        val now = System.currentTimeMillis()
+        regex.findAll(html).forEach { match ->
+            val url = match.groupValues[1]
+            val title = match.groupValues[2].trim()
+            if (url.startsWith("http")) {
+                viewModelScope.launch {
+                    bookmarkDao.upsert(
+                        Bookmark(url = url, title = title.ifBlank { url }, createdAt = now),
+                    )
+                }
+                count++
+            }
+        }
+        return count
+    }
+
     fun clearAll() {
         viewModelScope.launch { bookmarkDao.clearAll() }
     }

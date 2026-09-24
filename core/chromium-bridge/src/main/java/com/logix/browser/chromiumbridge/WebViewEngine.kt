@@ -70,4 +70,22 @@ class WebViewEngine(private val webView: WebView) : Engine {
         val scale = maxWidth.toFloat() / w
         Bitmap.createScaledBitmap(full, maxWidth, (h * scale).toInt(), true)
     }.getOrNull()
+
+    override fun findAll(text: String?) {
+        runCatching {
+            if (text.isNullOrEmpty()) {
+                webView.clearMatches()
+            } else {
+                webView.findAllAsync(text)
+            }
+        }
+    }
+
+    override fun findNext(forward: Boolean) {
+        runCatching { webView.findNext(forward) }
+    }
+
+    override fun evaluateJs(script: String, onResult: (String?) -> Unit) {
+        runCatching { webView.evaluateJavascript(script, onResult) }
+    }
 }

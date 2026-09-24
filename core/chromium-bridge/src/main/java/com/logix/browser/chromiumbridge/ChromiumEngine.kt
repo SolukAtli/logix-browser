@@ -50,6 +50,13 @@ class ChromiumEngine(
     override fun captureThumbnail(maxWidth: Int): android.graphics.Bitmap? =
         fallback.captureThumbnail(maxWidth)
 
+    override fun findAll(text: String?) = fallback.findAll(text)
+
+    override fun findNext(forward: Boolean) = fallback.findNext(forward)
+
+    override fun evaluateJs(script: String, onResult: (String?) -> Unit) =
+        fallback.evaluateJs(script, onResult)
+
     private fun openHandle(): Long {
         if (!isNative) return 0L
         return try {

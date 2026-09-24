@@ -19,9 +19,15 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -29,18 +35,28 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Article
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.BookmarkRemove
+import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Tab
+import androidx.compose.material.icons.filled.Translate
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Badge
 import androidx.compose.material3.DrawerValue
@@ -49,8 +65,10 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -76,11 +94,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.logix.browser.chromiumbridge.ContentViewHost
@@ -93,11 +115,14 @@ import com.logix.browser.settings.ui.AccentPalette
 import com.logix.browser.settings.ui.SettingsScreen
 import com.logix.browser.tabs.BookmarksViewModel
 import com.logix.browser.tabs.HistoryViewModel
+import com.logix.browser.tabs.SiteSettingsViewModel
 import com.logix.browser.tabs.TabsViewModel
 import com.logix.browser.tabs.ui.BookmarksSheet
 import com.logix.browser.tabs.ui.BrowserBottomBar
 import com.logix.browser.tabs.ui.HistorySheet
 import com.logix.browser.tabs.ui.NtpHome
+import com.logix.browser.tabs.ui.ReaderSheet
+import com.logix.browser.tabs.ui.SiteSettingsSheet
 import com.logix.browser.tabs.ui.TabsSheet
 import com.logix.browser.ui.theme.LogixTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -111,8 +136,13 @@ import kotlinx.coroutines.launch
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
+    /** Diğer uygulamalardan gelen bağlantı (VIEW/BROWSABLE). */
+    var externalUrl by mutableStateOf<String?>(null)
+        private set
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        consumeExternalIntent(intent)
         setContent {
             val settingsVm: SettingsViewModel = hiltViewModel()
             val settings by settingsVm.settings.collectAsStateWithLifecycle()
@@ -126,6 +156,26 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        consumeExternalIntent(intent)
+    }
+
+    private fun consumeExternalIntent(intent: Intent?) {
+        if (intent?.action == Intent.ACTION_VIEW) {
+            intent.dataString?.takeIf { it.startsWith("http") }?.let {
+                externalUrl = it
+            }
+        }
+    }
+
+    fun takeExternalUrl(): String? {
+        val url = externalUrl
+        externalUrl = null
+        return url
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -136,6 +186,7 @@ private fun BrowserScreen(
     settingsVm: SettingsViewModel,
     historyVm: HistoryViewModel = hiltViewModel(),
     bookmarksVm: BookmarksViewModel = hiltViewModel(),
+    siteVm: SiteSettingsViewModel = hiltViewModel(),
 ) {
     val tabs by tabsVm.tabs.collectAsStateWithLifecycle()
     val activeTab by tabsVm.activeTab.collectAsStateWithLifecycle()
@@ -147,6 +198,9 @@ private fun BrowserScreen(
     val bookmarks by bookmarksVm.bookmarks.collectAsStateWithLifecycle()
     val deathTriggered by settingsVm.deathResetTriggered.collectAsStateWithLifecycle()
     val thumbnails by tabsVm.thumbnails.collectAsStateWithLifecycle()
+    val shieldTotals by settingsVm.shieldTotals.collectAsStateWithLifecycle()
+    val siteOverrides by siteVm.overrides.collectAsStateWithLifecycle()
+    val filterRefreshing by settingsVm.filterRefreshing.collectAsStateWithLifecycle()
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val snackbar = remember { SnackbarHostState() }
@@ -157,6 +211,18 @@ private fun BrowserScreen(
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var showHistory by rememberSaveable { mutableStateOf(false) }
     var showBookmarks by rememberSaveable { mutableStateOf(false) }
+    var findOpen by rememberSaveable { mutableStateOf(false) }
+    var findQuery by rememberSaveable { mutableStateOf("") }
+    var findResult by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    var permissionPrompt by remember {
+        mutableStateOf<Triple<String, List<String>, (Boolean) -> Unit>?>(null)
+    }
+    var showSiteSettings by rememberSaveable { mutableStateOf(false) }
+    var readerText by remember { mutableStateOf<Pair<String, String?>?>(null) }
+
+    fun pageHost(): String = runCatching {
+        java.net.URI(activeTab?.url.orEmpty()).host.orEmpty()
+    }.getOrDefault("")
     var quickClearPhase by remember { mutableIntStateOf(0) } // 0 kapalı, 1 çalışıyor, 2 bitti
     var updateStatus by remember { mutableStateOf<UpdateStatus>(UpdateStatus.Idle) }
     var loadProgress by remember { mutableIntStateOf(0) }
@@ -168,6 +234,12 @@ private fun BrowserScreen(
 
     fun goTo(url: String) {
         tabsVm.openInActiveTab(url)
+    }
+
+    // Diğer uygulamadan gelen bağlantıyı aktif sekmede aç.
+    val hostActivity = context as? MainActivity
+    LaunchedEffect(hostActivity?.externalUrl) {
+        hostActivity?.takeExternalUrl()?.let { goTo(it) }
     }
 
     fun openExternal(url: String) {
@@ -226,6 +298,54 @@ private fun BrowserScreen(
         runCatching { imageLauncher.launch("image/*") }
     }
 
+    // Yer imi dışa aktar (HTML dosyası).
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/html"),
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                val html = buildString {
+                    appendLine("<!DOCTYPE NETSCAPE-Bookmark-file-1>")
+                    appendLine("<META HTTP-EQUIV=\"Content-Type\" CONTENT=\"text/html; charset=UTF-8\">")
+                    appendLine("<TITLE>Yer İmleri</TITLE><H1>Yer İmleri</H1><DL><p>")
+                    bookmarksVm.bookmarks.value.forEach { bm ->
+                        val title = bm.title.replace("&", "&amp;").replace("<", "&lt;")
+                        appendLine("<DT><A HREF=\"${bm.url}\">$title</A>")
+                    }
+                    appendLine("</DL><p>")
+                }
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(html.toByteArray())
+                }
+            }
+        }
+    }
+
+    // Yer imi içe aktar (tarayıcı HTML dosyası).
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                val html = context.contentResolver.openInputStream(uri)
+                    ?.bufferedReader()?.readText().orEmpty()
+                bookmarksVm.importHtml(html)
+            }
+        }
+    }
+
+    // Arka plan sesi + açılışta güncelleme denetimi (günde bir).
+    LaunchedEffect(settings.backgroundAudio) {
+        tabsVm.setKeepAudio(settings.backgroundAudio)
+    }
+    LaunchedEffect(Unit) {
+        val dayMs = 24L * 60L * 60L * 1000L
+        if (System.currentTimeMillis() - settings.updateLastCheck > dayMs) {
+            settingsVm.markUpdateChecked()
+            checkUpdate()
+        }
+    }
+
     // Dosya yükleme: sayfadaki <input type=file> için sistem seçici.
     var fileChooserCallback by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
     val fileChooserLauncher = rememberLauncherForActivityResult(
@@ -259,12 +379,17 @@ private fun BrowserScreen(
     // Back-stack priority (mutually exclusive):
     // 1. open sheet/dialog, 2. web history, 3. close tab,
     // 4. double-press to exit.
-    val sheetsOpen = showSettings || showTabs || showHistory || showBookmarks
+    val sheetsOpen = showSettings || showTabs || showHistory || showBookmarks || findOpen
     BackHandler(enabled = sheetsOpen) {
         when {
             showSettings -> showSettings = false
             showHistory -> showHistory = false
             showBookmarks -> showBookmarks = false
+            findOpen -> {
+                findOpen = false
+                findQuery = ""
+                tabsVm.findAll(null)
+            }
             else -> showTabs = false
         }
     }
@@ -337,6 +462,15 @@ private fun BrowserScreen(
                         settingsVm.setDesktopSite(!settings.desktopSite)
                     },
                 )
+                DrawerEntry(
+                    label = "Sayfada Ara",
+                    icon = Icons.Default.Search,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        findResult = null
+                        findOpen = true
+                    },
+                )
                 run {
                     val url = activeTab?.url.orEmpty()
                     val title = activeTab?.title.orEmpty()
@@ -349,7 +483,51 @@ private fun BrowserScreen(
                                 bookmarksVm.toggle(url, title, isBookmarked)
                             },
                         )
+                        val host = pageHost()
+                        if (host.isNotEmpty()) {
+                            DrawerEntry(
+                                label = "Bu Site İçin",
+                                icon = Icons.Default.Tune,
+                                badge = if (siteOverrides.containsKey(host)) "Özel" else null,
+                                onClick = {
+                                    scope.launch { drawerState.close() }
+                                    showSiteSettings = true
+                                },
+                            )
+                        }
+                        DrawerEntry(
+                            label = "Okuyucu Modu",
+                            icon = Icons.AutoMirrored.Filled.Article,
+                            onClick = {
+                                scope.launch { drawerState.close() }
+                                tabsVm.readArticle { t, text -> readerText = t to text }
+                            },
+                        )
+                        DrawerEntry(
+                            label = "Sayfayı Çevir",
+                            icon = Icons.Default.Translate,
+                            onClick = {
+                                val encoded = java.net.URLEncoder.encode(url, "UTF-8")
+                                goTo("https://translate.google.com/translate?sl=auto&tl=tr&u=$encoded")
+                            },
+                        )
+                        DrawerEntry(
+                            label = "Kaynağı Görüntüle",
+                            icon = Icons.Default.Code,
+                            onClick = { goTo("view-source:$url") },
+                        )
                     }
+                }
+                if (tabs.size > 1) {
+                    DrawerEntry(
+                        label = "Tüm Sekmeleri Yer İmle",
+                        icon = Icons.Default.Bookmarks,
+                        onClick = {
+                            bookmarksVm.addAll(tabs.mapNotNull { tab ->
+                                tab.url?.let { it to tab.title }
+                            })
+                        },
+                    )
                 }
                 DrawerEntry(
                     label = "Hızlı Temizle",
@@ -403,6 +581,11 @@ private fun BrowserScreen(
                         showSettings = true
                     },
                 )
+                DrawerEntry(
+                    label = "Çıkış",
+                    icon = Icons.AutoMirrored.Filled.ExitToApp,
+                    onClick = { (context as? ComponentActivity)?.finish() },
+                )
             }
         },
     ) {
@@ -435,6 +618,11 @@ private fun BrowserScreen(
                             selectedEngine = selectedEngine,
                             onSelectEngine = omniVm::selectEngine,
                             onGo = { omniVm.resolve()?.let { tabsVm.openInActiveTab(it) } },
+                            suggestions = omniVm.suggestions,
+                            onPickSuggestion = {
+                                omniVm.onQueryChange(it)
+                                omniVm.resolve()?.let { url -> tabsVm.openInActiveTab(url) }
+                            },
                             tabCount = tabs.size,
                             onShowTabs = { showTabs = true },
                             incognito = settings.incognito,
@@ -466,6 +654,26 @@ private fun BrowserScreen(
                         progress = { loadProgress / 100f },
                         modifier = Modifier.fillMaxWidth(),
                         color = AccentPalette.colorFor(settings.accent),
+                    )
+                }
+                if (findOpen) {
+                    FindBar(
+                        query = findQuery,
+                        onQueryChange = {
+                            findQuery = it
+                            tabsVm.findAll(it.ifBlank { null })
+                        },
+                        resultText = findResult?.let { (active, total) ->
+                            if (total == 0) "0/0" else "${active + 1}/$total"
+                        },
+                        onNext = { tabsVm.findNext(true) },
+                        onPrevious = { tabsVm.findNext(false) },
+                        onClose = {
+                            findOpen = false
+                            findQuery = ""
+                            findResult = null
+                            tabsVm.findAll(null)
+                        },
                     )
                 }
                 PullToRefreshBox(
@@ -504,6 +712,16 @@ private fun BrowserScreen(
                                 fileChooserCallback = null
                             }
                         },
+                        onFindResult = { active, total -> findResult = active to total },
+                        onPermissionRequest = { origin, resources, decide ->
+                            if (resources.isEmpty()) {
+                                permissionPrompt = null
+                            } else {
+                                permissionPrompt = Triple(origin, resources, decide)
+                            }
+                        },
+                        siteJsEnabled = siteOverrides[pageHost()]?.javaScript,
+                        siteAdBlock = siteOverrides[pageHost()]?.adBlock,
                         tabCount = tabs.size,
                     )
                 }
@@ -527,8 +745,44 @@ private fun BrowserScreen(
         if (showTabs) tabsVm.refreshThumbnail()
     }
 
-    if (deathTriggered) {
+    permissionPrompt?.let { (origin, resources, decide) ->
         AlertDialog(
+            onDismissRequest = {
+                decide(false)
+                permissionPrompt = null
+            },
+            title = { Text("Site izni") },
+            text = {
+                Text(
+                    "$origin şunları istiyor:\n" + resources.joinToString("\n") {
+                        when {
+                            it.contains("VIDEO", ignoreCase = true) -> "• Kamera"
+                            it.contains("AUDIO", ignoreCase = true) -> "• Mikrofon"
+                            else -> "• $it"
+                        }
+                    } + "\n\nSadece bu sayfadayken geçerli olur.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    decide(true)
+                    permissionPrompt = null
+                }) {
+                    Text("İzin ver")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    decide(false)
+                    permissionPrompt = null
+                }) {
+                    Text("Reddet")
+                }
+            },
+        )
+    }
+
+    if (deathTriggered) {        AlertDialog(
             onDismissRequest = settingsVm::acknowledgeDeathReset,
             title = { Text("Ölüm Anahtarı Tetiklendi") },
             text = {
@@ -613,6 +867,57 @@ private fun BrowserScreen(
             onRemove = bookmarksVm::remove,
             onClearAll = bookmarksVm::clearAll,
             onDismiss = { showBookmarks = false },
+            onExport = {
+                showBookmarks = false
+                runCatching { exportLauncher.launch("logix-yer-imleri.html") }
+            },
+            onImport = {
+                showBookmarks = false
+                runCatching { importLauncher.launch(arrayOf("text/html")) }
+            },
+        )
+    }
+
+    if (showSiteSettings) {
+        val host = pageHost()
+        val override = siteOverrides[host]
+        SiteSettingsSheet(
+            host = host.ifBlank { "?" },
+            javaScript = override?.javaScript,
+            adBlock = override?.adBlock,
+            globalJs = true,
+            globalAdBlock = settings.adBlockEnabled,
+            onJsChange = { siteVm.setJavaScript(host, it) },
+            onAdBlockChange = { siteVm.setAdBlock(host, it) },
+            onReset = { siteVm.reset(host) },
+            onDismiss = { showSiteSettings = false },
+        )
+    }
+
+    readerText?.let { (title, text) ->
+        ReaderSheet(
+            title = title,
+            text = text,
+            onDismiss = { readerText = null },
+        )
+    }
+
+    if (!settings.onboarded) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Logix'e hoş geldin") },
+            text = {
+                Text(
+                    "• Verilerin cihazında kalır, hesap gerekmez.\n" +
+                        "• Kalkanlar reklam ve izleyicileri engeller.\n" +
+                        "• Ölüm Anahtarı'nı açmadan önce uyarıyı oku — geri dönüşü yoktur.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = settingsVm::setOnboarded) {
+                    Text("Başla")
+                }
+            },
         )
     }
 
@@ -656,6 +961,11 @@ private fun BrowserScreen(
                     (updateStatus as? UpdateStatus.Available)
                         ?.downloadUrl?.let(::openExternal)
                 },
+                blockedAds = shieldTotals.ads,
+                blockedTrackers = shieldTotals.trackers,
+                backgroundAudio = settings.backgroundAudio,
+                onBackgroundAudioChange = settingsVm::setBackgroundAudio,
+                filterRefreshing = filterRefreshing,
             )
         }
     }
@@ -679,6 +989,10 @@ private fun NtpBody(
         ValueCallback<Array<Uri>>?,
         WebChromeClient.FileChooserParams?,
     ) -> Unit,
+    onFindResult: (Int, Int) -> Unit,
+    onPermissionRequest: (String, List<String>, (Boolean) -> Unit) -> Unit,
+    siteJsEnabled: Boolean?,
+    siteAdBlock: Boolean?,
     tabCount: Int,
     modifier: Modifier = Modifier,
 ) {
@@ -712,6 +1026,8 @@ private fun NtpBody(
             onProgressChanged = onProgressChanged,
             onPageVisited = historyVm::logVisit,
             onFileChooserRequest = onFileChooserRequest,
+            onFindResult = onFindResult,
+            onPermissionRequest = onPermissionRequest,
             userAgent = if (desktopActive) UserAgents.DESKTOP else UserAgents.forKey(settings.userAgent),
             textScale = settings.textScale,
             incognito = settings.incognito,
@@ -722,7 +1038,73 @@ private fun NtpBody(
                 httpsOnly = settings.httpsOnly,
             ),
             desktopMode = desktopActive,
+            siteJsEnabled = siteJsEnabled,
+            siteAdBlock = siteAdBlock,
         )
+    }
+}
+
+@Composable
+private fun FindBar(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    resultText: String?,
+    onNext: () -> Unit,
+    onPrevious: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        tonalElevation = 3.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Default.Search, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            BasicTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                textStyle = TextStyle(
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 16.sp,
+                ),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { onNext() }),
+                decorationBox = { inner ->
+                    Box {
+                        if (query.isEmpty()) {
+                            Text(
+                                "Sayfada ara",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        inner()
+                    }
+                },
+            )
+            resultText?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            IconButton(onClick = onPrevious) {
+                Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Önceki")
+            }
+            IconButton(onClick = onNext) {
+                Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Sonraki")
+            }
+            IconButton(onClick = onClose) {
+                Icon(Icons.Default.Close, contentDescription = "Kapat")
+            }
+        }
     }
 }
 

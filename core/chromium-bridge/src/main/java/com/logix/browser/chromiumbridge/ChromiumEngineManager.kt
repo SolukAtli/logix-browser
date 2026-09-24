@@ -57,4 +57,26 @@ class ChromiumEngineManager @Inject constructor() {
         } catch (e: Exception) {
             null
         }
+
+    fun findAll(text: String?) {
+        try {
+            engine?.findAll(text)
+        } catch (e: Exception) {
+        }
+    }
+
+    fun findNext(forward: Boolean) {
+        try {
+            engine?.findNext(forward)
+        } catch (e: Exception) {
+        }
+    }
+
+    fun evaluateJs(script: String, onResult: (String?) -> Unit) {
+        try {
+            engine?.evaluateJs(script, onResult) ?: onResult(null)
+        } catch (e: Exception) {
+            onResult(null)
+        }
+    }
 }

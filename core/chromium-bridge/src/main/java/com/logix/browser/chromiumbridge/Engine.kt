@@ -29,4 +29,13 @@ interface Engine {
 
     /** O anki görünümün küçük ekran görüntüsü; sekme önizlemeleri için. */
     fun captureThumbnail(maxWidth: Int = 480): android.graphics.Bitmap? = null
+
+    /** Sayfada bul: null verilirse vurgulama temizlenir. */
+    fun findAll(text: String?) {}
+
+    /** Sonraki/önceki eşleşmeye git. */
+    fun findNext(forward: Boolean) {}
+
+    /** Sayfada JS çalıştır (okuyucu modu gibi). */
+    fun evaluateJs(script: String, onResult: (String?) -> Unit) {}
 }

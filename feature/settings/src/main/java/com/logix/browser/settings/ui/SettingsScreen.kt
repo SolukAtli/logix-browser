@@ -27,7 +27,9 @@ import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Warning
@@ -36,6 +38,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -101,6 +104,11 @@ fun SettingsScreen(
     showUpdateDownload: Boolean,
     onCheckUpdate: () -> Unit,
     onDownloadUpdate: () -> Unit,
+    blockedAds: Long,
+    blockedTrackers: Long,
+    backgroundAudio: Boolean,
+    onBackgroundAudioChange: (Boolean) -> Unit,
+    filterRefreshing: Boolean,
     modifier: Modifier = Modifier,
 ) {
     var showDeathDialog by remember { mutableStateOf(false) }
@@ -241,6 +249,13 @@ fun SettingsScreen(
                 icon = Icons.Default.DesktopWindows,
                 iconTint = Color(0xFF2196F3),
             )
+            SettingSwitch(
+                label = "Arka planda ses oynat",
+                checked = backgroundAudio,
+                onCheckedChange = onBackgroundAudioChange,
+                icon = Icons.Default.MusicNote,
+                iconTint = Color(0xFFFF5722),
+            )
         }
 
         SectionHeader("Gizlilik ve Güvenlik")
@@ -250,6 +265,24 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Spacer(Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Default.Shield,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "Engellenen: $blockedAds reklam • $blockedTrackers izleyici",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                    ),
+                )
+            }
             SettingSwitch(
                 label = "Reklam Engelleme",
                 checked = settings.adBlockEnabled,
@@ -370,8 +403,12 @@ fun SettingsScreen(
                     text = "Son güncelleme: " + formatTimestamp(settings.filterUpdatedAt),
                     modifier = Modifier.weight(1f),
                 )
-                Button(onClick = onRefreshFilters) {
-                    Text("Denetle")
+                if (filterRefreshing) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                } else {
+                    Button(onClick = onRefreshFilters) {
+                        Text("Denetle")
+                    }
                 }
             }
         }

@@ -6,6 +6,7 @@ import com.logix.browser.adblock.ApplicationScope
 import com.logix.browser.database.AdBlockStatsDao
 import com.logix.browser.database.BookmarkDao
 import com.logix.browser.database.BrowserDatabase
+import com.logix.browser.database.DomainSettingsDao
 import com.logix.browser.database.HistoryDao
 import com.logix.browser.database.SearchEngineDao
 import com.logix.browser.database.TabDao
@@ -52,6 +53,9 @@ object AppModule {
 
     @Provides
     fun provideBookmarkDao(db: BrowserDatabase): BookmarkDao = db.bookmarkDao()
+
+    @Provides
+    fun provideDomainSettingsDao(db: BrowserDatabase): DomainSettingsDao = db.domainSettingsDao()
 
     @Provides
     @Singleton

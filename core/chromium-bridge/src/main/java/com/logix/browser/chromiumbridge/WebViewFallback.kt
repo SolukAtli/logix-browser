@@ -1,8 +1,15 @@
 package com.logix.browser.chromiumbridge
 
 import android.annotation.SuppressLint
+import android.app.DownloadManager
+import android.content.Context
 import android.net.Uri
+import android.net.http.SslError
+import android.os.Environment
 import android.webkit.CookieManager
+import android.webkit.PermissionRequest
+import android.webkit.SslErrorHandler
+import android.webkit.URLUtil
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -54,6 +61,13 @@ private data class PrivacyKey(
     val userAgent: String,
     val shields: ShieldsConfig,
     val desktopMode: Boolean,
+    val siteJs: Boolean?,
+)
+
+/** İzlenmek istemiyorum + Global Gizlilik Denetimi başlıkları. */
+private fun gpcHeaders(): Map<String, String> = mapOf(
+    "DNT" to "1",
+    "Sec-GPC" to "1",
 )
 
 /**
@@ -74,6 +88,12 @@ fun ContentViewHost(
     onNavigationStateChanged: (canGoBack: Boolean, canGoForward: Boolean) -> Unit = { _, _ -> },
     onProgressChanged: (progress: Int) -> Unit = {},
     onPageVisited: (url: String, title: String) -> Unit = { _, _ -> },
+    onFindResult: (active: Int, total: Int) -> Unit = { _, _ -> },
+    onPermissionRequest: (
+        origin: String,
+        resources: List<String>,
+        decide: (granted: Boolean) -> Unit,
+    ) -> Unit = { _, _, _ -> },
     onFileChooserRequest: (
         callback: ValueCallback<Array<Uri>>?,
         params: WebChromeClient.FileChooserParams?,
@@ -84,8 +104,10 @@ fun ContentViewHost(
     cookiesAccepted: Boolean = true,
     shields: ShieldsConfig = ShieldsConfig(true, true, false),
     desktopMode: Boolean = false,
+    siteJsEnabled: Boolean? = null,
+    siteAdBlock: Boolean? = null,
 ) {
-    var privacyKey by remember { mutableStateOf(PrivacyKey(incognito, cookiesAccepted, userAgent, shields, desktopMode)) }
+    var privacyKey by remember { mutableStateOf(PrivacyKey(incognito, cookiesAccepted, userAgent, shields, desktopMode, siteJsEnabled)) }
     // Kalkan DI'ı hazır değilse sayfa kalkansız açılır, çökmez.
     val appContext = LocalContext.current.applicationContext
     val entry = remember {
@@ -94,6 +116,9 @@ fun ContentViewHost(
         }.getOrNull()
     }
     val latestFileChooser by rememberUpdatedState(onFileChooserRequest)
+    val latestFind by rememberUpdatedState(onFindResult)
+    val latestPermission by rememberUpdatedState(onPermissionRequest)
+    val latestSiteAd by rememberUpdatedState(siteAdBlock)
     val latestNavState by rememberUpdatedState(onNavigationStateChanged)
     val latestProgress by rememberUpdatedState(onProgressChanged)
     val latestVisited by rememberUpdatedState(onPageVisited)
@@ -103,7 +128,7 @@ fun ContentViewHost(
         modifier = modifier,
         factory = { context ->
             WebView(context).apply {
-                settings.javaScriptEnabled = true
+                settings.javaScriptEnabled = siteJsEnabled ?: true
                 settings.domStorageEnabled = true
                 settings.databaseEnabled = true
                 settings.userAgentString = userAgent
@@ -117,6 +142,9 @@ fun ContentViewHost(
                         latestNavState(view.canGoBack(), view.canGoForward())
                     }
 
+                    // Bekleyen SSL kararı: kullanıcı error sayfasından seçer.
+                    var pendingSsl: SslErrorHandler? = null
+
                     override fun shouldInterceptRequest(
                         view: WebView,
                         request: WebResourceRequest,
@@ -124,7 +152,8 @@ fun ContentViewHost(
                         return try {
                             val shieldEntry = entry ?: return null
                             val cfg = latestShields
-                            if (!cfg.adBlock && !cfg.trackerBlock) return null
+                            val adOn = latestSiteAd ?: cfg.adBlock
+                            if (!adOn && !cfg.trackerBlock) return null
                             val urlStr = request.url.toString()
                             if (!urlStr.startsWith("http://") && !urlStr.startsWith("https://")) {
                                 return null
@@ -133,7 +162,7 @@ fun ContentViewHost(
                             if (!shieldEntry.adBlocker().shouldBlock(host)) return null
                             val isTracker = shieldEntry.adBlocker().isTracker(host)
                             if (isTracker && !cfg.trackerBlock) return null
-                            if (!isTracker && !cfg.adBlock) return null
+                            if (!isTracker && !adOn) return null
                             shieldEntry.stats().recordBlocked(isTracker)
                             blockedResponse()
                         } catch (e: Exception) {
@@ -145,6 +174,23 @@ fun ContentViewHost(
                         view: WebView,
                         request: WebResourceRequest,
                     ): Boolean {
+                        // SSL hata sayfası kararları.
+                        when (request.url.toString()) {
+                            "logix://ssl-back" -> {
+                                pendingSsl?.cancel()
+                                pendingSsl = null
+                                if (view.canGoBack()) view.goBack()
+                                return true
+                            }
+                            "logix://ssl-proceed" -> {
+                                try {
+                                    pendingSsl?.proceed()
+                                } catch (e: Exception) {
+                                }
+                                pendingSsl = null
+                                return true
+                            }
+                        }
                         if (!latestShields.httpsOnly || !request.isForMainFrame) return false
                         return try {
                             val upgraded = entry?.httpsUpgrader()?.upgraded(request.url.toString())
@@ -168,7 +214,8 @@ fun ContentViewHost(
                         try {
                             val cosmeticEntry = entry
                             val cfg = latestShields
-                            if (cosmeticEntry != null && (cfg.adBlock || cfg.trackerBlock)) {
+                            val adOn = latestSiteAd ?: cfg.adBlock
+                            if (cosmeticEntry != null && (adOn || cfg.trackerBlock)) {
                                 val script = cosmeticEntry.cosmetic()
                                     .buildScript(cosmeticEntry.adBlocker().cosmeticSelectors())
                                 if (script.isNotEmpty()) {
@@ -188,8 +235,49 @@ fun ContentViewHost(
                         super.doUpdateVisitedHistory(view, url, isReload)
                         if (view != null) report(view)
                     }
+
+                    override fun onReceivedSslError(
+                        view: WebView,
+                        handler: SslErrorHandler,
+                        error: SslError,
+                    ) {
+                        pendingSsl?.cancel()
+                        pendingSsl = handler
+                        handler.cancel()
+                        view.loadDataWithBaseURL(
+                            error.url,
+                            sslErrorHtml(error.url.orEmpty()),
+                            "text/html",
+                            "utf-8",
+                            null,
+                        )
+                    }
                 }
                 onEngineReady(WebViewEngine(this))
+                setFindListener { activeMatchOrdinal, numberOfMatches, _ ->
+                    latestFind(activeMatchOrdinal, numberOfMatches)
+                }
+                setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
+                    runCatching {
+                        val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
+                        val request = DownloadManager.Request(Uri.parse(url)).apply {
+                            addRequestHeader("Cookie", CookieManager.getInstance().getCookie(url))
+                            addRequestHeader("User-Agent", userAgent)
+                            setTitle(fileName)
+                            setMimeType(mimeType)
+                            setNotificationVisibility(
+                                DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED,
+                            )
+                            setDestinationInExternalPublicDir(
+                                Environment.DIRECTORY_DOWNLOADS,
+                                fileName,
+                            )
+                            allowScanningByMediaScanner()
+                        }
+                        val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                        manager.enqueue(request)
+                    }
+                }
                 webChromeClient = object : WebChromeClient() {
                     override fun onProgressChanged(view: WebView, newProgress: Int) {
                         super.onProgressChanged(view, newProgress)
@@ -204,8 +292,23 @@ fun ContentViewHost(
                         latestFileChooser(filePathCallback, fileChooserParams)
                         return true
                     }
+
+                    override fun onPermissionRequest(request: PermissionRequest) {
+                        val origin = request.origin.toString()
+                        val resources = request.resources.toList()
+                        latestPermission(origin, resources) { granted ->
+                            runCatching {
+                                if (granted) request.grant(request.resources)
+                                else request.deny()
+                            }
+                        }
+                    }
+
+                    override fun onPermissionRequestCanceled(request: PermissionRequest) {
+                        latestPermission(request.origin.toString(), emptyList()) { }
+                    }
                 }
-                loadUrl(url)
+                loadUrl(url, gpcHeaders())
             }
         },
         update = { view ->
@@ -216,9 +319,13 @@ fun ContentViewHost(
                 reloadNeeded = true
             }
             view.settings.textZoom = (textScale.coerceIn(0.5f, 3f) * 100).toInt()
-            val key = PrivacyKey(incognito, cookiesAccepted, userAgent, shields, desktopMode)
+            val key = PrivacyKey(incognito, cookiesAccepted, userAgent, shields, desktopMode, siteJsEnabled)
             if (privacyKey != key) {
                 applyPrivacy(view, incognito, cookiesAccepted)
+                if (view.settings.javaScriptEnabled != (siteJsEnabled ?: true)) {
+                    view.settings.javaScriptEnabled = siteJsEnabled ?: true
+                    reloadNeeded = true
+                }
                 // Kalkan/çerez değiştiyse sayfayı kalkanlarla yeniden yükle.
                 if (privacyKey.shields != key.shields || privacyKey.cookiesAccepted != key.cookiesAccepted) {
                     reloadNeeded = true
@@ -228,7 +335,7 @@ fun ContentViewHost(
             if (reloadNeeded) {
                 view.reload()
             } else if (view.url != url) {
-                view.loadUrl(url)
+                view.loadUrl(url, gpcHeaders())
             }
         },
     )
@@ -270,3 +377,20 @@ private fun blockedResponse(): WebResourceResponse =
         null,
         ByteArrayInputStream(ByteArray(0)),
     )
+
+private fun sslErrorHtml(url: String): String {
+    val safe = url.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return """
+        <html><head><meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>body{font-family:sans-serif;background:#1a1b26;color:#fff;text-align:center;padding:48px 24px}
+        h1{font-size:22px}.url{color:#b9b9d6;word-break:break-all;margin:12px 0 24px}
+        a{display:block;margin:10px auto;padding:14px;border-radius:16px;text-decoration:none;max-width:320px}
+        .back{background:#232433;color:#fff}.go{background:#b3261e;color:#fff}</style></head>
+        <body><h1>⚠️ Bağlantı güvenli değil</h1>
+        <div class="url">$safe</div>
+        <p>Sitenin güvenlik sertifikası doğrulanamadı. Bilgilerin çalınabilir.</p>
+        <a class="back" href="logix://ssl-back">Geri dön (önerilir)</a>
+        <a class="go" href="logix://ssl-proceed">Riski anlıyorum, yine de devam et</a>
+        </body></html>
+    """.trimIndent()
+}

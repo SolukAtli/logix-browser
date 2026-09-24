@@ -13,6 +13,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.settingsDataStore by preferencesDataStore(name = "logix_settings")
@@ -44,6 +45,9 @@ class SettingsRepository @Inject constructor(
         val QUICK_CLEAR_COOKIES = booleanPreferencesKey("quick_clear_cookies")
         val QUICK_CLEAR_CACHE = booleanPreferencesKey("quick_clear_cache")
         val QUICK_CLEAR_BOOKMARKS = booleanPreferencesKey("quick_clear_bookmarks")
+        val BACKGROUND_AUDIO = booleanPreferencesKey("background_audio")
+        val ONBOARDED = booleanPreferencesKey("onboarded")
+        val UPDATE_LAST_CHECK = longPreferencesKey("update_last_check")
         val BAR_POSITION = stringPreferencesKey("bar_position")
         val USER_AGENT = stringPreferencesKey("user_agent")
         val TEXT_SCALE = floatPreferencesKey("text_scale")
@@ -71,6 +75,9 @@ class SettingsRepository @Inject constructor(
                 quickClearCookies = prefs[Keys.QUICK_CLEAR_COOKIES] ?: true,
                 quickClearCache = prefs[Keys.QUICK_CLEAR_CACHE] ?: true,
                 quickClearBookmarks = prefs[Keys.QUICK_CLEAR_BOOKMARKS] ?: false,
+                backgroundAudio = prefs[Keys.BACKGROUND_AUDIO] ?: false,
+                onboarded = prefs[Keys.ONBOARDED] ?: false,
+                updateLastCheck = prefs[Keys.UPDATE_LAST_CHECK] ?: 0L,
                 barPosition = prefs[Keys.BAR_POSITION] ?: "top",
                 userAgent = prefs[Keys.USER_AGENT] ?: "mobile",
                 textScale = prefs[Keys.TEXT_SCALE] ?: 1f,
@@ -151,6 +158,20 @@ class SettingsRepository @Inject constructor(
     suspend fun setQuickClearBookmarks(enabled: Boolean) {
         context.settingsDataStore.edit { it[Keys.QUICK_CLEAR_BOOKMARKS] = enabled }
     }
+
+    suspend fun setBackgroundAudio(enabled: Boolean) {
+        context.settingsDataStore.edit { it[Keys.BACKGROUND_AUDIO] = enabled }
+    }
+
+    suspend fun setOnboarded() {
+        context.settingsDataStore.edit { it[Keys.ONBOARDED] = true }
+    }
+
+    suspend fun markUpdateChecked(now: Long = System.currentTimeMillis()) {
+        context.settingsDataStore.edit { it[Keys.UPDATE_LAST_CHECK] = now }
+    }
+
+    suspend fun filterUpdatedAt(): Long = settings.first().filterUpdatedAt
 
     suspend fun setBarPosition(position: String) {
         context.settingsDataStore.edit { it[Keys.BAR_POSITION] = position }

@@ -12,6 +12,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -36,6 +38,8 @@ fun BookmarksSheet(
     onRemove: (String) -> Unit,
     onClearAll: () -> Unit,
     onDismiss: () -> Unit,
+    onExport: () -> Unit = {},
+    onImport: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, modifier = modifier) {
@@ -51,6 +55,12 @@ fun BookmarksSheet(
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     modifier = Modifier.weight(1f),
                 )
+                IconButton(onClick = onImport) {
+                    Icon(Icons.Default.Upload, contentDescription = "İçe aktar")
+                }
+                IconButton(onClick = onExport) {
+                    Icon(Icons.Default.Download, contentDescription = "Dışa aktar")
+                }
                 if (bookmarks.isNotEmpty()) {
                     TextButton(onClick = onClearAll) { Text("Tümünü temizle") }
                 }

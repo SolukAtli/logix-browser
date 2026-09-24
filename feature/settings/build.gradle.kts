@@ -33,6 +33,7 @@ kotlin {
 dependencies {
     implementation(project(":core:search"))
     implementation(project(":core:database"))
+    implementation(project(":core:adblock"))
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.lifecycle.viewmodel)
