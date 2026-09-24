@@ -19,10 +19,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Cached
 import androidx.compose.material.icons.filled.Cookie
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.DesktopWindows
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sync
@@ -86,6 +89,16 @@ fun SettingsScreen(
     onBarPositionChange: (String) -> Unit,
     onUserAgentChange: (String) -> Unit,
     onTextScaleChange: (Float) -> Unit,
+    onQuickClearHistoryChange: (Boolean) -> Unit,
+    onQuickClearCookiesChange: (Boolean) -> Unit,
+    onQuickClearCacheChange: (Boolean) -> Unit,
+    onQuickClearBookmarksChange: (Boolean) -> Unit,
+    appVersion: String,
+    updateBusy: Boolean,
+    updateLabel: String?,
+    showUpdateDownload: Boolean,
+    onCheckUpdate: () -> Unit,
+    onDownloadUpdate: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var showDeathDialog by remember { mutableStateOf(false) }
@@ -182,31 +195,59 @@ fun SettingsScreen(
             )
         }
 
-        SectionHeader("User-Agent")
+        SectionHeader("Site Görünümü")
         SectionCard {
+            Text(
+                "Siteler seni hangi cihaz sansın? Değişiklik sayfayı yeniler.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
             Row {
                 FilterChip(
                     selected = settings.userAgent == "mobile",
                     onClick = { onUserAgentChange("mobile") },
-                    label = { Text("Mobil") },
+                    label = { Text("Telefon") },
                 )
                 Spacer(Modifier.width(8.dp))
                 FilterChip(
                     selected = settings.userAgent == "desktop",
                     onClick = { onUserAgentChange("desktop") },
-                    label = { Text("Masaüstü") },
+                    label = { Text("Bilgisayar") },
                 )
                 Spacer(Modifier.width(8.dp))
                 FilterChip(
                     selected = settings.userAgent == "safari",
                     onClick = { onUserAgentChange("safari") },
-                    label = { Text("Safari") },
+                    label = { Text("iPhone") },
                 )
             }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                when (settings.userAgent) {
+                    "desktop" -> "Bilgisayar: sitelerin masaüstü sürümü, geniş sayfa düzeni."
+                    "safari" -> "iPhone: siteler seni iPhone Safari sanır."
+                    else -> "Telefon: sitelerin mobil sürümü, hızlı ve sade."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            SettingSwitch(
+                label = "Her zaman masaüstü site",
+                checked = settings.desktopSite,
+                onCheckedChange = onDesktopSiteChange,
+                icon = Icons.Default.DesktopWindows,
+                iconTint = Color(0xFF2196F3),
+            )
         }
 
         SectionHeader("Gizlilik ve Güvenlik")
         SectionCard {
+            Text(
+                "Tümü anında uygulanır, sayfa yenilenir.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             SettingSwitch(
                 label = "Reklam Engelleme",
                 checked = settings.adBlockEnabled,
@@ -235,13 +276,79 @@ fun SettingsScreen(
                 icon = Icons.Default.Lock,
                 iconTint = Color(0xFF4CAF50),
             )
-            SettingSwitch(
-                label = "Masaüstü Site",
-                checked = settings.desktopSite,
-                onCheckedChange = onDesktopSiteChange,
-                icon = Icons.Default.DesktopWindows,
-                iconTint = Color(0xFF2196F3),
+        }
+
+        SectionHeader("Hızlı Temizleme")
+        SectionCard {
+            Text(
+                "Menüdeki Hızlı Temizle neleri silsin?",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            SettingSwitch(
+                label = "Geçmiş",
+                checked = settings.quickClearHistory,
+                onCheckedChange = onQuickClearHistoryChange,
+                icon = Icons.Default.History,
+                iconTint = Color(0xFF9C27B0),
+            )
+            SettingSwitch(
+                label = "Çerezler ve oturumlar",
+                checked = settings.quickClearCookies,
+                onCheckedChange = onQuickClearCookiesChange,
+                icon = Icons.Default.Cookie,
+                iconTint = Color(0xFF795548),
+            )
+            SettingSwitch(
+                label = "Önbellek ve site verileri",
+                checked = settings.quickClearCache,
+                onCheckedChange = onQuickClearCacheChange,
+                icon = Icons.Default.Cached,
+                iconTint = Color(0xFF00BCD4),
+            )
+            SettingSwitch(
+                label = "Yer imleri",
+                checked = settings.quickClearBookmarks,
+                onCheckedChange = onQuickClearBookmarksChange,
+                icon = Icons.Default.Bookmark,
+                iconTint = Color(0xFFFFC107),
+            )
+        }
+
+        SectionHeader("Uygulama")
+        SectionCard {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Sürüm", modifier = Modifier.weight(1f))
+                Text(
+                    appVersion,
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                    ),
+                )
+            }
+            updateLabel?.let {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Row {
+                Button(onClick = onCheckUpdate, enabled = !updateBusy) {
+                    Text(if (updateBusy) "Denetleniyor…" else "Güncellemeyi denetle")
+                }
+                if (showUpdateDownload) {
+                    Spacer(Modifier.width(8.dp))
+                    Button(onClick = onDownloadUpdate) {
+                        Text("İndir")
+                    }
+                }
+            }
         }
 
         SectionHeader("Filtre Listeleri")
@@ -359,29 +466,9 @@ private fun DeathResetCard(
             }
             Spacer(Modifier.height(12.dp))
             Text(
-                "Bu özellik ne işe yarar?",
-                style = MaterialTheme.typography.titleSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                ),
-            )
-            Text(
-                "Tarayıcıyı $days günden uzun süre hiç açmazsan, bir sonraki açılışta " +
-                    "tüm verilerin otomatik olarak imha edilir. Her açılışında sayaç sıfırlanır.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Neden tehlikeli?",
-                style = MaterialTheme.typography.titleSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                ),
-            )
-            Text(
-                "• Tarama geçmişin silinir\n" +
-                    "• Yer imlerin silinir\n" +
-                    "• Açık sekmelerin kapanır\n" +
-                    "• Çerezlerin ve tüm oturumların (hesap girişlerin) silinir\n" +
-                    "• GERİ DÖNÜŞ YOKTUR",
+                "$days gün açmazsan; geçmiş, yer imleri, sekmeler, çerezler ve " +
+                    "oturumların kalıcı olarak silinir. Her açılışta sayaç sıfırlanır. " +
+                    "Geri dönüşü yoktur.",
                 style = MaterialTheme.typography.bodyMedium,
             )
             Spacer(Modifier.height(8.dp))
@@ -450,23 +537,19 @@ private fun DeathResetConfirmDialog(
     var dialogDays by remember { mutableStateOf(days.coerceIn(1, 365)) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Default.Warning,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error,
-                )
-                Spacer(Modifier.width(8.dp))
-                Text("Ölüm Anahtarını Aç")
-            }
+        icon = {
+            Icon(
+                Icons.Default.Warning,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+            )
         },
+        title = { Text("Emin misin?", textAlign = TextAlign.Center) },
         text = {
-            Column {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    "Tarayıcıyı seçtiğin gün sayısı boyunca hiç açmazsan; " +
-                        "geçmişin, yer imlerin, sekmelerin, çerezlerin ve oturumların " +
-                        "KALICI OLARAK silinir. Bu işlem geri alınamaz.",
+                    "Bu süre boyunca uygulamayı hiç açmazsan her şeyin silinir. " +
+                        "Geri dönüşü yok.",
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = TextAlign.Center,
                 )

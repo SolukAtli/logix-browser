@@ -49,4 +49,12 @@ class ChromiumEngineManager @Inject constructor() {
     fun canGoBack(): Boolean = engine?.canGoBack() == true
 
     fun canGoForward(): Boolean = engine?.canGoForward() == true
+
+    /** Bağlı motorun o anki görünümünü yakalar (UI thread'de çağrılmalı). */
+    fun captureActiveThumbnail(): android.graphics.Bitmap? =
+        try {
+            engine?.captureThumbnail()
+        } catch (e: Exception) {
+            null
+        }
 }

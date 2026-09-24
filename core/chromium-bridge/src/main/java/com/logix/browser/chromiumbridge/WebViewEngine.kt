@@ -1,5 +1,7 @@
 package com.logix.browser.chromiumbridge
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.webkit.WebView
 
 /**
@@ -55,4 +57,17 @@ class WebViewEngine(private val webView: WebView) : Engine {
     override fun destroy() {
         webView.destroy()
     }
+
+    override fun captureThumbnail(maxWidth: Int): Bitmap? = runCatching {
+        val w = webView.width
+        val h = webView.height
+        if (w <= 0 || h <= 0) return null
+        val full = Bitmap.createBitmap(w, h, Bitmap.Config.RGB_565)
+        val canvas = Canvas(full)
+        canvas.drawColor(android.graphics.Color.WHITE)
+        webView.draw(canvas)
+        if (w <= maxWidth) return full
+        val scale = maxWidth.toFloat() / w
+        Bitmap.createScaledBitmap(full, maxWidth, (h * scale).toInt(), true)
+    }.getOrNull()
 }

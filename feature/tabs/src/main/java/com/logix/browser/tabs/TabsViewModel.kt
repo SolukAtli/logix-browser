@@ -1,5 +1,6 @@
 package com.logix.browser.tabs
 
+import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.logix.browser.chromiumbridge.ChromiumEngineManager
@@ -9,6 +10,7 @@ import com.logix.browser.chromiumbridge.MemoryPressureHandler
 import com.logix.browser.database.TabState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -16,6 +18,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Tab list state over [TabsRepository]; programmatic navigation goes
@@ -49,6 +52,9 @@ class TabsViewModel @Inject constructor(
 
     private val _canGoForward = MutableStateFlow(false)
     val canGoForward: StateFlow<Boolean> = _canGoForward
+
+    private val _thumbnails = MutableStateFlow<Map<String, Bitmap>>(emptyMap())
+    val thumbnails: StateFlow<Map<String, Bitmap>> = _thumbnails
 
     init {
         // Sekme listesi her boşaldığında (ilk açılış, tek tek kapatma veya
@@ -109,10 +115,10 @@ class TabsViewModel @Inject constructor(
             resetNavigationState()
             registry.release(id)
             repository.closeTab(id)
+            _thumbnails.value = _thumbnails.value - id
             val current = repository.tabs.first()
-            if (current.isEmpty()) {
-                repository.createTab()
-            } else if (current.none { it.isActive }) {
+            // Boş kalırsa init'teki toplayıcı taze sekmeyi açar.
+            if (current.none { it.isActive } && current.isNotEmpty()) {
                 selectTab(current.first().id)
             }
         }
@@ -161,6 +167,19 @@ class TabsViewModel @Inject constructor(
     /** Drops the bound engine's back/forward list (incognito entry). */
     fun clearActiveEngineHistory() {
         activeTab.value?.id?.let { registry.get(it)?.clearHistory() }
+    }
+
+    /** Aktif sekmenin o anki görünümünü önizleme olarak yakalar. */
+    fun refreshThumbnail() {
+        viewModelScope.launch {
+            val id = activeTab.value?.id ?: return@launch
+            val bmp = withContext(Dispatchers.Main) {
+                engineManager.captureActiveThumbnail()
+            }
+            if (bmp != null) {
+                _thumbnails.value = _thumbnails.value + (id to bmp)
+            }
+        }
     }
 
     private fun resetNavigationState() {

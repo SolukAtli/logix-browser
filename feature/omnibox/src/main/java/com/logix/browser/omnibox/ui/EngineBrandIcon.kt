@@ -39,6 +39,8 @@ fun EngineBrandIcon(
     if (svg != null) {
         AndroidView(
             factory = { ctx -> SVGImageView(ctx).apply { setSVG(svg) } },
+            // Motor değişince aynı view tekrar kullanılır; SVG'yi yenile.
+            update = { (it as SVGImageView).setSVG(svg) },
             modifier = modifier.size(size),
         )
     } else {

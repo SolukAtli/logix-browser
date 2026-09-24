@@ -26,4 +26,7 @@ interface Engine {
     /** Tab evicted: release native resources (WebContents). Session data
      *  (URL/title) must already be persisted as TabState. */
     fun destroy()
+
+    /** O anki görünümün küçük ekran görüntüsü; sekme önizlemeleri için. */
+    fun captureThumbnail(maxWidth: Int = 480): android.graphics.Bitmap? = null
 }

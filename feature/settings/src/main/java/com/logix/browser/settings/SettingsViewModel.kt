@@ -1,7 +1,10 @@
 package com.logix.browser.settings
 
+import android.webkit.CookieManager
+import android.webkit.WebStorage
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.logix.browser.database.BookmarkDao
 import com.logix.browser.database.HistoryDao
 import com.logix.browser.search.SearchEngine
 import com.logix.browser.search.SearchEngineManager
@@ -11,6 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -24,6 +28,7 @@ class SettingsViewModel @Inject constructor(
     private val repository: SettingsRepository,
     private val engines: SearchEngineManager,
     private val historyDao: HistoryDao,
+    private val bookmarkDao: BookmarkDao,
     private val deathReset: DeathResetManager,
 ) : ViewModel() {
 
@@ -120,6 +125,41 @@ class SettingsViewModel @Inject constructor(
     fun quickClearHistory(onDone: () -> Unit = {}) {
         viewModelScope.launch {
             historyDao.clearAll()
+            onDone()
+        }
+    }
+
+    fun setQuickClearHistory(enabled: Boolean) {
+        viewModelScope.launch { repository.setQuickClearHistory(enabled) }
+    }
+
+    fun setQuickClearCookies(enabled: Boolean) {
+        viewModelScope.launch { repository.setQuickClearCookies(enabled) }
+    }
+
+    fun setQuickClearCache(enabled: Boolean) {
+        viewModelScope.launch { repository.setQuickClearCache(enabled) }
+    }
+
+    fun setQuickClearBookmarks(enabled: Boolean) {
+        viewModelScope.launch { repository.setQuickClearBookmarks(enabled) }
+    }
+
+    /** Ayarlarda seçili kapsamda temizler; bitince [onDone] çağrılır. */
+    fun quickClearAll(onDone: () -> Unit = {}) {
+        viewModelScope.launch {
+            val current = repository.settings.first()
+            if (current.quickClearHistory) historyDao.clearAll()
+            if (current.quickClearBookmarks) bookmarkDao.clearAll()
+            if (current.quickClearCookies) {
+                runCatching {
+                    CookieManager.getInstance().removeAllCookies(null)
+                    CookieManager.getInstance().flush()
+                }
+            }
+            if (current.quickClearCache) {
+                runCatching { WebStorage.getInstance().deleteAllData() }
+            }
             onDone()
         }
     }

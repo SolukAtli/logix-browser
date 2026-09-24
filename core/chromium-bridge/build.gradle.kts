@@ -36,4 +36,5 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.javax.inject)
+    implementation(libs.hilt.android)
 }

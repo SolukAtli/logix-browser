@@ -1,14 +1,18 @@
 package com.logix.browser.tabs.ui
 
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
@@ -21,12 +25,15 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.logix.browser.database.TabState
 
 /**
- * Tab grid sheet: successor of the legacy web UI's tab switcher.
+ * Sekme ızgarası: önizleme görseli + başlık + URL.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,6 +44,7 @@ fun TabsSheet(
     onClose: (String) -> Unit,
     onNewTab: () -> Unit,
     onDismiss: () -> Unit,
+    thumbnails: Map<String, Bitmap> = emptyMap(),
     modifier: Modifier = Modifier,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, modifier = modifier) {
@@ -49,28 +57,41 @@ fun TabsSheet(
             ) {
                 items(tabs, key = { it.id }) { tab ->
                     ElevatedCard(onClick = { onSelect(tab.id) }) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
+                        Column {
+                            thumbnails[tab.id]?.let { bmp ->
+                                Image(
+                                    bitmap = bmp.asImageBitmap(),
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(16f / 10f)
+                                        .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)),
+                                )
+                            }
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = tab.title,
+                                        modifier = Modifier.weight(1f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    IconButton(onClick = { onClose(tab.id) }) {
+                                        Icon(Icons.Default.Close, contentDescription = "Kapat")
+                                    }
+                                }
                                 Text(
-                                    text = tab.title,
-                                    modifier = Modifier.weight(1f),
+                                    text = tab.url.orEmpty(),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
-                                IconButton(onClick = { onClose(tab.id) }) {
-                                    Icon(Icons.Default.Close, contentDescription = "Kapat")
+                                if (tab.id == activeTabId) {
+                                    Text("• Aktif")
                                 }
-                            }
-                            Text(
-                                text = tab.url.orEmpty(),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            if (tab.id == activeTabId) {
-                                Text("• Aktif")
                             }
                         }
                     }

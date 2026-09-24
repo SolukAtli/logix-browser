@@ -40,6 +40,10 @@ class SettingsRepository @Inject constructor(
         val DEATH_RESET_ENABLED = booleanPreferencesKey("death_reset_enabled")
         val DEATH_RESET_DAYS = intPreferencesKey("death_reset_days")
         val LAST_ACTIVE_AT = longPreferencesKey("last_active_at")
+        val QUICK_CLEAR_HISTORY = booleanPreferencesKey("quick_clear_history")
+        val QUICK_CLEAR_COOKIES = booleanPreferencesKey("quick_clear_cookies")
+        val QUICK_CLEAR_CACHE = booleanPreferencesKey("quick_clear_cache")
+        val QUICK_CLEAR_BOOKMARKS = booleanPreferencesKey("quick_clear_bookmarks")
         val BAR_POSITION = stringPreferencesKey("bar_position")
         val USER_AGENT = stringPreferencesKey("user_agent")
         val TEXT_SCALE = floatPreferencesKey("text_scale")
@@ -63,6 +67,10 @@ class SettingsRepository @Inject constructor(
                 deathResetEnabled = prefs[Keys.DEATH_RESET_ENABLED] ?: false,
                 deathResetDays = prefs[Keys.DEATH_RESET_DAYS] ?: 30,
                 lastActiveAt = prefs[Keys.LAST_ACTIVE_AT] ?: 0L,
+                quickClearHistory = prefs[Keys.QUICK_CLEAR_HISTORY] ?: true,
+                quickClearCookies = prefs[Keys.QUICK_CLEAR_COOKIES] ?: true,
+                quickClearCache = prefs[Keys.QUICK_CLEAR_CACHE] ?: true,
+                quickClearBookmarks = prefs[Keys.QUICK_CLEAR_BOOKMARKS] ?: false,
                 barPosition = prefs[Keys.BAR_POSITION] ?: "top",
                 userAgent = prefs[Keys.USER_AGENT] ?: "mobile",
                 textScale = prefs[Keys.TEXT_SCALE] ?: 1f,
@@ -126,6 +134,22 @@ class SettingsRepository @Inject constructor(
     /** Son aktif olma anı — ölüm anahtarı sayacı her açılışta buradan beslenir. */
     suspend fun updateLastActive(now: Long = System.currentTimeMillis()) {
         context.settingsDataStore.edit { it[Keys.LAST_ACTIVE_AT] = now }
+    }
+
+    suspend fun setQuickClearHistory(enabled: Boolean) {
+        context.settingsDataStore.edit { it[Keys.QUICK_CLEAR_HISTORY] = enabled }
+    }
+
+    suspend fun setQuickClearCookies(enabled: Boolean) {
+        context.settingsDataStore.edit { it[Keys.QUICK_CLEAR_COOKIES] = enabled }
+    }
+
+    suspend fun setQuickClearCache(enabled: Boolean) {
+        context.settingsDataStore.edit { it[Keys.QUICK_CLEAR_CACHE] = enabled }
+    }
+
+    suspend fun setQuickClearBookmarks(enabled: Boolean) {
+        context.settingsDataStore.edit { it[Keys.QUICK_CLEAR_BOOKMARKS] = enabled }
     }
 
     suspend fun setBarPosition(position: String) {

@@ -4,21 +4,27 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.view.WindowManager
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.BookmarkRemove
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
@@ -31,9 +37,11 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Badge
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -55,6 +63,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -63,6 +72,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.logix.browser.chromiumbridge.ContentViewHost
+import com.logix.browser.chromiumbridge.ShieldsConfig
 import com.logix.browser.chromiumbridge.UserAgents
 import com.logix.browser.omnibox.OmniboxViewModel
 import com.logix.browser.omnibox.ui.OmniboxBar
@@ -124,6 +134,7 @@ private fun BrowserScreen(
     val history by historyVm.recent.collectAsStateWithLifecycle()
     val bookmarks by bookmarksVm.bookmarks.collectAsStateWithLifecycle()
     val deathTriggered by settingsVm.deathResetTriggered.collectAsStateWithLifecycle()
+    val thumbnails by tabsVm.thumbnails.collectAsStateWithLifecycle()
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val snackbar = remember { SnackbarHostState() }
@@ -134,6 +145,8 @@ private fun BrowserScreen(
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var showHistory by rememberSaveable { mutableStateOf(false) }
     var showBookmarks by rememberSaveable { mutableStateOf(false) }
+    var quickClearPhase by remember { mutableIntStateOf(0) } // 0 kapalı, 1 çalışıyor, 2 bitti
+    var updateStatus by remember { mutableStateOf<UpdateStatus>(UpdateStatus.Idle) }
     var loadProgress by remember { mutableIntStateOf(0) }
     var lastBackPress by rememberSaveable { mutableStateOf(0L) }
 
@@ -143,6 +156,26 @@ private fun BrowserScreen(
 
     fun goTo(url: String) {
         tabsVm.openInActiveTab(url)
+    }
+
+    fun openExternal(url: String) {
+        runCatching {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        }
+    }
+
+    fun checkUpdate() {
+        scope.launch {
+            updateStatus = UpdateStatus.Checking
+            val release = runCatching { UpdateChecker.latest() }.getOrNull()
+            updateStatus = when {
+                release == null || release.version.isBlank() ->
+                    UpdateStatus.Failed("Bağlantı kurulamadı, sonra tekrar dene.")
+                UpdateChecker.isNewer(release.version, BuildConfig.VERSION_NAME) ->
+                    UpdateStatus.Available(release.version, release.notes, release.downloadUrl)
+                else -> UpdateStatus.Latest
+            }
+        }
     }
 
     // Sesli arama: sistem konuşma tanıyıcı, sonucu omnibox'a yaz + otomatik git.
@@ -181,6 +214,16 @@ private fun BrowserScreen(
         runCatching { imageLauncher.launch("image/*") }
     }
 
+    // Dosya yükleme: sayfadaki <input type=file> için sistem seçici.
+    var fileChooserCallback by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
+    val fileChooserLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val uris = WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data)
+        fileChooserCallback?.onReceiveValue(uris)
+        fileChooserCallback = null
+    }
+
     // Incognito: block screenshots/screen recording.
     LaunchedEffect(settings.incognito) {
         val window = (context as? ComponentActivity)?.window
@@ -188,6 +231,15 @@ private fun BrowserScreen(
             window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         } else {
             window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+    }
+
+    // Hızlı temizleme animasyonu: çalış → bitti → kendiliğinden kapan.
+    LaunchedEffect(quickClearPhase) {
+        if (quickClearPhase == 1) {
+            settingsVm.quickClearAll { quickClearPhase = 2 }
+            kotlinx.coroutines.delay(1100)
+            quickClearPhase = 0
         }
     }
 
@@ -225,6 +277,9 @@ private fun BrowserScreen(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
+        // Kenardan kaydırma kapalı: web sayfasında gezerken menünün
+        // istemsiz açılması engellenir, menü düğmeyle açılır.
+        gesturesEnabled = false,
         drawerContent = {
             ModalDrawerSheet {
                 Text(
@@ -287,7 +342,8 @@ private fun BrowserScreen(
                     label = "Hızlı Temizle",
                     icon = Icons.Default.Delete,
                     onClick = {
-                        settingsVm.quickClearHistory()
+                        scope.launch { drawerState.close() }
+                        quickClearPhase = 1
                     },
                 )
                 DrawerEntry(
@@ -420,6 +476,21 @@ private fun BrowserScreen(
                         showBookmarks = { showBookmarks = true },
                         onMic = ::launchVoice,
                         onCamera = ::launchImageSearch,
+                        onFileChooserRequest = { callback, params ->
+                            fileChooserCallback?.onReceiveValue(null)
+                            fileChooserCallback = callback
+                            val intent = runCatching { params?.createIntent() }.getOrNull()
+                            if (intent != null) {
+                                runCatching { fileChooserLauncher.launch(intent) }
+                                    .onFailure {
+                                        fileChooserCallback?.onReceiveValue(null)
+                                        fileChooserCallback = null
+                                    }
+                            } else {
+                                fileChooserCallback?.onReceiveValue(null)
+                                fileChooserCallback = null
+                            }
+                        },
                         tabCount = tabs.size,
                     )
                 }
@@ -435,7 +506,12 @@ private fun BrowserScreen(
             onClose = tabsVm::closeTab,
             onNewTab = { tabsVm.createTab(); showTabs = false },
             onDismiss = { showTabs = false },
+            thumbnails = thumbnails,
         )
+    }
+
+    LaunchedEffect(showTabs) {
+        if (showTabs) tabsVm.refreshThumbnail()
     }
 
     if (deathTriggered) {
@@ -454,6 +530,33 @@ private fun BrowserScreen(
                 }
             },
         )
+    }
+
+    if (quickClearPhase > 0) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = {}) {
+            androidx.compose.material3.Card(
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+            ) {
+                androidx.compose.foundation.layout.Column(
+                    modifier = Modifier.padding(horizontal = 32.dp, vertical = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    if (quickClearPhase == 1) {
+                        CircularProgressIndicator()
+                        Text("Temizleniyor…")
+                    } else {
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(40.dp),
+                        )
+                        Text("Temizlendi")
+                    }
+                }
+            }
+        }
     }
 
     if (showHistory) {
@@ -498,6 +601,24 @@ private fun BrowserScreen(
                 onBarPositionChange = settingsVm::setBarPosition,
                 onUserAgentChange = settingsVm::setUserAgent,
                 onTextScaleChange = settingsVm::setTextScale,
+                onQuickClearHistoryChange = settingsVm::setQuickClearHistory,
+                onQuickClearCookiesChange = settingsVm::setQuickClearCookies,
+                onQuickClearCacheChange = settingsVm::setQuickClearCache,
+                onQuickClearBookmarksChange = settingsVm::setQuickClearBookmarks,
+                appVersion = BuildConfig.VERSION_NAME,
+                updateBusy = updateStatus is UpdateStatus.Checking,
+                updateLabel = when (val s = updateStatus) {
+                    is UpdateStatus.Latest -> "En güncel sürümü kullanıyorsun."
+                    is UpdateStatus.Available -> "Yeni sürüm var: ${s.version}"
+                    is UpdateStatus.Failed -> s.reason
+                    else -> null
+                },
+                showUpdateDownload = updateStatus is UpdateStatus.Available,
+                onCheckUpdate = ::checkUpdate,
+                onDownloadUpdate = {
+                    (updateStatus as? UpdateStatus.Available)
+                        ?.downloadUrl?.let(::openExternal)
+                },
             )
         }
     }
@@ -517,6 +638,10 @@ private fun NtpBody(
     showBookmarks: () -> Unit,
     onMic: () -> Unit,
     onCamera: () -> Unit,
+    onFileChooserRequest: (
+        ValueCallback<Array<Uri>>?,
+        WebChromeClient.FileChooserParams?,
+    ) -> Unit,
     tabCount: Int,
     modifier: Modifier = Modifier,
 ) {
@@ -540,6 +665,8 @@ private fun NtpBody(
             modifier = modifier,
         )
     } else {
+        // Masaüstü anahtarı açıksa UA zorla masaüstüne döner.
+        val desktopActive = settings.desktopSite || settings.userAgent == "desktop"
         ContentViewHost(
             url = url,
             modifier = modifier.fillMaxSize(),
@@ -547,9 +674,17 @@ private fun NtpBody(
             onNavigationStateChanged = tabsVm::onNavigationStateChanged,
             onProgressChanged = onProgressChanged,
             onPageVisited = historyVm::logVisit,
-            userAgent = UserAgents.forKey(settings.userAgent),
+            onFileChooserRequest = onFileChooserRequest,
+            userAgent = if (desktopActive) UserAgents.DESKTOP else UserAgents.forKey(settings.userAgent),
             textScale = settings.textScale,
             incognito = settings.incognito,
+            cookiesAccepted = settings.cookiesAccepted,
+            shields = ShieldsConfig(
+                adBlock = settings.adBlockEnabled,
+                trackerBlock = settings.trackerBlockEnabled,
+                httpsOnly = settings.httpsOnly,
+            ),
+            desktopMode = desktopActive,
         )
     }
 }

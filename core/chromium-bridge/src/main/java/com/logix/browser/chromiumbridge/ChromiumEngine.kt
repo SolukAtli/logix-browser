@@ -47,6 +47,9 @@ class ChromiumEngine(
         closeHandle()
     }
 
+    override fun captureThumbnail(maxWidth: Int): android.graphics.Bitmap? =
+        fallback.captureThumbnail(maxWidth)
+
     private fun openHandle(): Long {
         if (!isNative) return 0L
         return try {
