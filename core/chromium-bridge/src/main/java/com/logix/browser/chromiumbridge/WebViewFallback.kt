@@ -3,6 +3,7 @@ package com.logix.browser.chromiumbridge
 import android.annotation.SuppressLint
 import android.app.DownloadManager
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.net.http.SslError
 import android.os.Environment
@@ -12,16 +13,19 @@ import android.webkit.SslErrorHandler
 import android.webkit.URLUtil
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
-import android.webkit.WebResourceError
 import android.webkit.WebSettings
+import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -36,6 +40,11 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import java.io.ByteArrayInputStream
+import java.net.HttpURLConnection
+import java.net.URL
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Kalkanlara giden DI köprüsü (bu modülde Hilt plugin'i yok).
@@ -93,8 +102,9 @@ fun ContentViewHost(
     onPermissionRequest: (
         origin: String,
         resources: List<String>,
-        decide: (granted: Boolean) -> Unit,
+        decide: (granted: List<String>) -> Unit,
     ) -> Unit = { _, _, _ -> },
+    onSourceLoaded: (title: String, source: String?) -> Unit = { _, _ -> },
     onFileChooserRequest: (
         callback: ValueCallback<Array<Uri>>?,
         params: WebChromeClient.FileChooserParams?,
@@ -122,6 +132,8 @@ fun ContentViewHost(
     val latestFileChooser by rememberUpdatedState(onFileChooserRequest)
     val latestFind by rememberUpdatedState(onFindResult)
     val latestPermission by rememberUpdatedState(onPermissionRequest)
+    val latestSource by rememberUpdatedState(onSourceLoaded)
+    val ioScope = rememberCoroutineScope()
     val latestSiteAd by rememberUpdatedState(siteAdBlock)
     val latestNavState by rememberUpdatedState(onNavigationStateChanged)
     val latestProgress by rememberUpdatedState(onProgressChanged)
@@ -140,14 +152,87 @@ fun ContentViewHost(
                 // Masaüstü görünüm: geniş viewport + genel bakış modu.
                 settings.useWideViewPort = true
                 settings.loadWithOverviewMode = desktopMode
-                applyPrivacy(this, incognito, cookiesAccepted)
+                applyPrivacy(this, incognito, cookiesAccepted, entering = incognito, leaving = false)
                 webViewClient = object : WebViewClient() {
                     private fun report(view: WebView) {
                         latestNavState(view.canGoBack(), view.canGoForward())
                     }
 
-                    // Bekleyen SSL kararı: kullanıcı error sayfasından seçer.
+                    // Bekleyen SSL kararı: kullanıcı error sayfasından seçene
+                    // kadar handler açık tutulur; tek karar verilir.
                     var pendingSsl: SslErrorHandler? = null
+                    var pendingSslUrl: String? = null
+                    var sslDecided = false
+
+                    private fun settleSsl(proceed: Boolean, view: WebView) {
+                        if (!sslDecided) {
+                            sslDecided = true
+                            runCatching {
+                                if (proceed) pendingSsl?.proceed() else pendingSsl?.cancel()
+                            }
+                        }
+                        pendingSsl = null
+                        pendingSslUrl = null
+                        if (!proceed && view.canGoBack()) view.goBack()
+                    }
+
+                    private fun openExternal(view: WebView, target: String) {
+                        val opened = runCatching {
+                            if (target.startsWith("intent://")) {
+                                val intent = Intent.parseUri(target, Intent.URI_INTENT_SCHEME)
+                                intent.addCategory(Intent.CATEGORY_BROWSABLE)
+                                intent.component = null
+                                intent.selector = null
+                                if (intent.resolveActivity(appContext.packageManager) != null) {
+                                    appContext.startActivity(
+                                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                    )
+                                    return@runCatching true
+                                }
+                                val fallback = NavigationRouter.intentFallbackUrl(target)
+                                if (fallback != null) {
+                                    view.loadUrl(fallback)
+                                    return@runCatching true
+                                }
+                                return@runCatching false
+                            }
+                            val view2 = Intent(Intent.ACTION_VIEW, Uri.parse(target)).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            if (view2.resolveActivity(appContext.packageManager) == null) {
+                                return@runCatching false
+                            }
+                            appContext.startActivity(view2)
+                            true
+                        }.getOrDefault(false)
+                        if (!opened) {
+                            Toast.makeText(
+                                appContext,
+                                "Bu bağlantıyı açacak uygulama bulunamadı",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                    }
+
+                    private fun fetchSource(view: WebView, url: String) {
+                        ioScope.launch(Dispatchers.IO) {
+                            val text = runCatching {
+                                val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                                    connectTimeout = 15_000
+                                    readTimeout = 20_000
+                                }
+                                try {
+                                    if (conn.responseCode != HttpURLConnection.HTTP_OK) return@runCatching null
+                                    conn.inputStream.bufferedReader().readText().take(200_000)
+                                } finally {
+                                    conn.disconnect()
+                                }
+                            }.getOrNull()
+                            withContext(Dispatchers.Main) {
+                                latestSource(view.title.orEmpty(), text)
+                            }
+                        }
+                    }
 
                     override fun shouldInterceptRequest(
                         view: WebView,
@@ -178,21 +263,29 @@ fun ContentViewHost(
                         view: WebView,
                         request: WebResourceRequest,
                     ): Boolean {
-                        // SSL hata sayfası kararları.
-                        when (request.url.toString()) {
+                        val target = request.url.toString()
+                        // Uygulama içi SSL ekranı.
+                        when (target) {
                             "logix://ssl-back" -> {
-                                pendingSsl?.cancel()
-                                pendingSsl = null
-                                if (view.canGoBack()) view.goBack()
+                                settleSsl(false, view)
                                 return true
                             }
                             "logix://ssl-proceed" -> {
-                                try {
-                                    pendingSsl?.proceed()
-                                } catch (e: Exception) {
-                                }
-                                pendingSsl = null
+                                settleSsl(true, view)
                                 return true
+                            }
+                        }
+                        when (NavigationRouter.route(target, request.isForMainFrame)) {
+                            NavigationRouter.Decision.FETCH_SOURCE -> {
+                                fetchSource(view, target.removePrefix("view-source:"))
+                                return true
+                            }
+                            NavigationRouter.Decision.EXTERNAL_APP -> {
+                                openExternal(view, target)
+                                return true
+                            }
+                            NavigationRouter.Decision.IN_WEBVIEW -> {
+                                // Aşağıda HTTPS yükseltme.
                             }
                         }
                         if (!latestShields.httpsOnly || !request.isForMainFrame) return false
@@ -231,6 +324,19 @@ fun ContentViewHost(
                         }
                     }
 
+                    override fun onPageStarted(
+                        view: WebView,
+                        url: String?,
+                        favicon: android.graphics.Bitmap?,
+                    ) {
+                        // Kullanıcı başka sayfaya geçtiyse eski SSL kararı ölür.
+                        if (pendingSsl != null && url != pendingSslUrl) {
+                            runCatching { pendingSsl?.cancel() }
+                            pendingSsl = null
+                            pendingSslUrl = null
+                        }
+                    }
+
                     override fun doUpdateVisitedHistory(
                         view: WebView?,
                         url: String?,
@@ -256,9 +362,11 @@ fun ContentViewHost(
                         handler: SslErrorHandler,
                         error: SslError,
                     ) {
-                        pendingSsl?.cancel()
+                        // Önceki kararı kapat, yenisini kullanıcı seçene kadar beklet.
+                        runCatching { pendingSsl?.cancel() }
                         pendingSsl = handler
-                        handler.cancel()
+                        pendingSslUrl = error.url
+                        sslDecided = false
                         view.loadDataWithBaseURL(
                             error.url,
                             sslErrorHtml(error.url.orEmpty()),
@@ -313,7 +421,7 @@ fun ContentViewHost(
                         val resources = request.resources.toList()
                         latestPermission(origin, resources) { granted ->
                             runCatching {
-                                if (granted) request.grant(request.resources)
+                                if (granted.isNotEmpty()) request.grant(granted.toTypedArray())
                                 else request.deny()
                             }
                         }
@@ -336,7 +444,9 @@ fun ContentViewHost(
             view.settings.textZoom = (textScale.coerceIn(0.5f, 3f) * 100).toInt()
             val key = PrivacyKey(incognito, cookiesAccepted, userAgent, shields, desktopMode, siteJsEnabled)
             if (privacyKey != key) {
-                applyPrivacy(view, incognito, cookiesAccepted)
+                val entering = incognito && !privacyKey.incognito
+                val leaving = !incognito && privacyKey.incognito
+                applyPrivacy(view, incognito, cookiesAccepted, entering, leaving)
                 if (view.settings.javaScriptEnabled != (siteJsEnabled ?: true)) {
                     view.settings.javaScriptEnabled = siteJsEnabled ?: true
                     reloadNeeded = true
@@ -358,16 +468,31 @@ fun ContentViewHost(
 }
 
 /**
- * Gizlilik uygulaması: gizli modda hiçbir şey diske yazılmaz;
- * normal modda çerez anahtarı ayarlardan gelir.
+ * Gizlilik uygulaması. Aynı WebView profili paylaşıldığı için gerçek
+ * izolasyon, gizli moda girerken VE çıkarken çerez + site verisini
+ * silmekle sağlanır. Normal modda çerez anahtarı ayarlardan gelir.
  */
-private fun applyPrivacy(view: WebView, incognito: Boolean, cookiesAccepted: Boolean) {
+private fun applyPrivacy(
+    view: WebView,
+    incognito: Boolean,
+    cookiesAccepted: Boolean,
+    entering: Boolean,
+    leaving: Boolean,
+) {
     runCatching {
         val cookies = CookieManager.getInstance()
+        if (entering || leaving) {
+            // Gizli oturum artığı normal profile, normal profil gizliye taşınmasın.
+            runCatching {
+                cookies.removeAllCookies(null)
+                cookies.flush()
+            }
+            runCatching { WebStorage.getInstance().deleteAllData() }
+            view.clearCache(true)
+            view.clearFormData()
+        }
         if (incognito) {
             view.clearHistory()
-            view.clearFormData()
-            view.clearCache(true)
             cookies.setAcceptCookie(false)
             view.settings.saveFormData = false
             view.settings.databaseEnabled = false

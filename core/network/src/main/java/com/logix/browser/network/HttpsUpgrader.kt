@@ -15,10 +15,10 @@ class HttpsUpgrader @Inject constructor() {
      */
     fun upgraded(url: String): String? {
         if (!url.startsWith("http://")) return null
-        val withoutScheme = url.removePrefix("http://")
-        val host = withoutScheme.substringBefore("/").substringBefore(":").lowercase()
+        val parsed = runCatching { android.net.Uri.parse(url) }.getOrNull() ?: return null
+        val host = (parsed.host ?: return null).lowercase()
         if (host.isEmpty() || isLocalHost(host) || isIpLiteral(host)) return null
-        return "https://$withoutScheme"
+        return "https://" + url.removePrefix("http://")
     }
 
     private fun isLocalHost(host: String): Boolean =

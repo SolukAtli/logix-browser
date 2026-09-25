@@ -55,7 +55,7 @@ blocking, incognito isolation and a dead man's switch.
 
 | Feature | Details |
 |---|---|
-| Incognito mode | `FLAG_SECURE` (no screenshots), no history/cookies/cache on disk |
+| Incognito mode | `FLAG_SECURE`, no history; cookies + site data wiped on entry/exit |
 | Ad blocking | EasyList-based parser + `DomainTrie`, request-level blocking in WebView |
 | Tracker blocking | Analytics / fingerprinting request blocking toggle |
 | HTTPS-Only mode | Upgrades navigations to HTTPS |
@@ -116,6 +116,13 @@ cd logix-browser
 ./gradlew :app:assembleDebug
 # Output: app/build/outputs/apk/debug/app-debug.apk
 ```
+
+> **Linux note:** first run needs the wrapper executable —
+> `chmod +x gradlew` (or run `bash ./gradlew ...`).
+
+> **SDK note:** without Android Studio, point Gradle at your SDK:
+> `export ANDROID_HOME=/path/to/Android/Sdk` (or create
+> `local.properties` with `sdk.dir=/path/to/Android/Sdk`).
 
 Install it:
 
@@ -205,10 +212,14 @@ DataStore Preferences · Coroutines/Flow · KSP · AGP 8.13 · compile/targetSdk
 
 ## 🔒 Privacy Model
 
-- **Incognito is real isolation:** history, cookies, cache and form data never
-  touch disk; screenshots/screen recording are blocked at the window level.
+- **Incognito wipes on entry and exit:** entering or leaving incognito deletes
+  cookies and site data so sessions can't leak between profiles (same WebView
+  profile is shared, so this is wipe-based — not separate-profile — isolation);
+  screenshots/screen recording are blocked at the window level.
 - **Blocking happens on-device:** filter lists are parsed and matched locally —
   your browsing never leaves the phone for "cloud protection".
+- **Safe Browsing is currently a NoOp:** the interface exists for a real
+  provider, but no malicious-site protection is active by default.
 - **Death reset is opt-in and loud:** enabling it requires confirming a red
   warning dialog that explains permanent, irreversible deletion.
 - **No accounts, no sync servers, no analytics SDKs.**

@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.view.WindowManager
+import android.webkit.PermissionRequest
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import androidx.activity.ComponentActivity
@@ -30,6 +31,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -77,6 +79,8 @@ import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -218,7 +222,7 @@ private fun BrowserScreen(
     var findQuery by rememberSaveable { mutableStateOf("") }
     var findResult by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     var permissionPrompt by remember {
-        mutableStateOf<Triple<String, List<String>, (Boolean) -> Unit>?>(null)
+        mutableStateOf<Triple<String, List<String>, (List<String>) -> Unit>?>(null)
     }
     var showSiteSettings by rememberSaveable { mutableStateOf(false) }
     var readerText by remember { mutableStateOf<Pair<String, String?>?>(null) }
@@ -288,13 +292,28 @@ private fun BrowserScreen(
         runCatching { voiceLauncher.launch(intent) }
     }
 
-    // Görsel arama: galeriden resim seç, Lens ana sayfasını aç.
-    // Yerel dosya doğrudan yüklenemediği için kullanıcı yüklemeyi Lens'te tamamlar.
+    // Görsel arama: resmi Lens'e gönder (kuruluysa), yoksa Lens sayfası.
     val imageLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent(),
     ) { uri ->
         if (uri != null) {
-            tabsVm.openInActiveTab("https://lens.google.com/")
+            val lensSend = Intent(Intent.ACTION_SEND).apply {
+                type = "image/*"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                setPackage("com.google.android.googlequicksearchbox")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            val opened = runCatching {
+                if (lensSend.resolveActivity(context.packageManager) != null) {
+                    context.startActivity(lensSend)
+                    true
+                } else {
+                    false
+                }
+            }.getOrDefault(false)
+            if (!opened) {
+                tabsVm.openInActiveTab("https://lens.google.com/")
+            }
         }
     }
     fun launchImageSearch() {
@@ -312,8 +331,7 @@ private fun BrowserScreen(
                     appendLine("<META HTTP-EQUIV=\"Content-Type\" CONTENT=\"text/html; charset=UTF-8\">")
                     appendLine("<TITLE>Yer İmleri</TITLE><H1>Yer İmleri</H1><DL><p>")
                     bookmarksVm.bookmarks.value.forEach { bm ->
-                        val title = bm.title.replace("&", "&amp;").replace("<", "&lt;")
-                        appendLine("<DT><A HREF=\"${bm.url}\">$title</A>")
+                        appendLine("<DT><A HREF=\"${escapeAttr(bm.url)}\">${escapeHtml(bm.title)}</A>")
                     }
                     appendLine("</DL><p>")
                 }
@@ -739,6 +757,9 @@ private fun BrowserScreen(
                                 permissionPrompt = Triple(origin, resources, decide)
                             }
                         },
+                        onSourceLoaded = { title, source ->
+                            readerText = title to source
+                        },
                         siteJsEnabled = siteOverrides[pageHost()]?.javaScript,
                         siteAdBlock = siteOverrides[pageHost()]?.adBlock,
                         tabCount = tabs.size,
@@ -765,40 +786,78 @@ private fun BrowserScreen(
     }
 
     permissionPrompt?.let { (origin, resources, decide) ->
-        AlertDialog(
-            onDismissRequest = {
-                decide(false)
+        // Yalnızca desteklenen kaynaklar verilebilir; her biri ayrı onaylanır.
+        val grantable = remember(resources) {
+            resources.filter {
+                it == PermissionRequest.RESOURCE_VIDEO_CAPTURE ||
+                    it == PermissionRequest.RESOURCE_AUDIO_CAPTURE
+            }
+        }
+        if (grantable.isEmpty()) {
+            LaunchedEffect(Unit) {
+                decide(emptyList())
                 permissionPrompt = null
-            },
-            title = { Text("Site izni") },
-            text = {
-                Text(
-                    "$origin şunları istiyor:\n" + resources.joinToString("\n") {
-                        when {
-                            it.contains("VIDEO", ignoreCase = true) -> "• Kamera"
-                            it.contains("AUDIO", ignoreCase = true) -> "• Mikrofon"
-                            else -> "• $it"
+            }
+        } else {
+            var checked by remember(grantable) {
+                mutableStateOf(grantable.associateWith { true })
+            }
+            AlertDialog(
+                onDismissRequest = {
+                    decide(emptyList())
+                    permissionPrompt = null
+                },
+                title = { Text("Site izni") },
+                text = {
+                    Column {
+                        Text(origin)
+                        Spacer(Modifier.height(8.dp))
+                        grantable.forEach { res ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    when (res) {
+                                        PermissionRequest.RESOURCE_VIDEO_CAPTURE -> "Kamera"
+                                        PermissionRequest.RESOURCE_AUDIO_CAPTURE -> "Mikrofon"
+                                        else -> res
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Switch(
+                                    checked = checked[res] == true,
+                                    onCheckedChange = { on ->
+                                        checked = checked + (res to on)
+                                    },
+                                )
+                            }
                         }
-                    } + "\n\nSadece bu sayfadayken geçerli olur.",
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    decide(true)
-                    permissionPrompt = null
-                }) {
-                    Text("İzin ver")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    decide(false)
-                    permissionPrompt = null
-                }) {
-                    Text("Reddet")
-                }
-            },
-        )
+                        Text(
+                            "Sadece bu sayfadayken geçerli olur, kaydedilmez.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        decide(grantable.filter { checked[it] == true })
+                        permissionPrompt = null
+                    }) {
+                        Text("Uygula")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        decide(emptyList())
+                        permissionPrompt = null
+                    }) {
+                        Text("Reddet")
+                    }
+                },
+            )
+        }
     }
 
     if (deathTriggered) {        AlertDialog(
@@ -1009,7 +1068,8 @@ private fun NtpBody(
         WebChromeClient.FileChooserParams?,
     ) -> Unit,
     onFindResult: (Int, Int) -> Unit,
-    onPermissionRequest: (String, List<String>, (Boolean) -> Unit) -> Unit,
+    onPermissionRequest: (String, List<String>, (List<String>) -> Unit) -> Unit,
+    onSourceLoaded: (String, String?) -> Unit,
     siteJsEnabled: Boolean?,
     siteAdBlock: Boolean?,
     tabCount: Int,
@@ -1047,6 +1107,7 @@ private fun NtpBody(
             onFileChooserRequest = onFileChooserRequest,
             onFindResult = onFindResult,
             onPermissionRequest = onPermissionRequest,
+            onSourceLoaded = onSourceLoaded,
             userAgent = if (desktopActive) UserAgents.DESKTOP else UserAgents.forKey(settings.userAgent),
             textScale = settings.textScale,
             incognito = settings.incognito,
@@ -1145,8 +1206,19 @@ private fun DrawerEntry(
     )
 }
 
-private fun shareUrl(context: Context, url: String) {
-    val intent = Intent(Intent.ACTION_SEND).apply {
+private fun escapeAttr(value: String): String = value
+    .replace("&", "&amp;")
+    .replace("\"", "&quot;")
+    .replace("'", "&#39;")
+    .replace("<", "&lt;")
+    .replace(">", "&gt;")
+
+private fun escapeHtml(value: String): String = value
+    .replace("&", "&amp;")
+    .replace("<", "&lt;")
+    .replace(">", "&gt;")
+
+private fun shareUrl(context: Context, url: String) {    val intent = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
         putExtra(Intent.EXTRA_TEXT, url)
     }
