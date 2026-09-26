@@ -43,7 +43,7 @@ blocking, incognito isolation and a dead man's switch.
 | Tab manager | Grid sheet, LRU engine pool, freeze/restore under memory pressure |
 | New Tab Page | Minimal LOGIX home with search card + quick actions |
 | Voice search | System speech recognizer → fills omnibox and searches |
-| Visual search | Pick an image → opens Google Lens |
+| Visual search | Pick an image → sent to Google Lens (falls back to lens.google.com) |
 | Bookmarks | One-tap add/remove, bottom-sheet library |
 | History | Auto-logged visits, per-item delete, one-tap clear |
 | Pull-to-refresh | Swipe down on any page |

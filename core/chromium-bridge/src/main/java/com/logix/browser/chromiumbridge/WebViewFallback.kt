@@ -183,6 +183,13 @@ fun ContentViewHost(
                                 intent.addCategory(Intent.CATEGORY_BROWSABLE)
                                 intent.component = null
                                 intent.selector = null
+                                // Web sayfasına URI izin bayrağı verme.
+                                intent.removeFlags(
+                                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                                        Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+                                        Intent.FLAG_GRANT_PREFIX_URI_PERMISSION,
+                                )
                                 if (intent.resolveActivity(appContext.packageManager) != null) {
                                     appContext.startActivity(
                                         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
@@ -220,6 +227,12 @@ fun ContentViewHost(
                                 val conn = (URL(url).openConnection() as HttpURLConnection).apply {
                                     connectTimeout = 15_000
                                     readTimeout = 20_000
+                                    // WebView oturumuyla aynı kimlik: çerez + UA taşınır.
+                                    setRequestProperty(
+                                        "Cookie",
+                                        CookieManager.getInstance().getCookie(url).orEmpty(),
+                                    )
+                                    setRequestProperty("User-Agent", view.settings.userAgentString)
                                 }
                                 try {
                                     if (conn.responseCode != HttpURLConnection.HTTP_OK) return@runCatching null
@@ -275,13 +288,21 @@ fun ContentViewHost(
                                 return true
                             }
                         }
-                        when (NavigationRouter.route(target, request.isForMainFrame)) {
+                        when (NavigationRouter.route(target, request.isForMainFrame, request.hasGesture())) {
                             NavigationRouter.Decision.FETCH_SOURCE -> {
                                 fetchSource(view, target.removePrefix("view-source:"))
                                 return true
                             }
                             NavigationRouter.Decision.EXTERNAL_APP -> {
                                 openExternal(view, target)
+                                return true
+                            }
+                            NavigationRouter.Decision.IGNORED -> {
+                                Toast.makeText(
+                                    appContext,
+                                    "Otomatik uygulama açılışı engellendi",
+                                    Toast.LENGTH_SHORT,
+                                ).show()
                                 return true
                             }
                             NavigationRouter.Decision.IN_WEBVIEW -> {
@@ -421,7 +442,12 @@ fun ContentViewHost(
                         val resources = request.resources.toList()
                         latestPermission(origin, resources) { granted ->
                             runCatching {
-                                if (granted.isNotEmpty()) request.grant(granted.toTypedArray())
+                                // UI ne derse desin: yalnızca bilinen 2 kaynak verilir.
+                                val allowed = granted.filter {
+                                    it == PermissionRequest.RESOURCE_VIDEO_CAPTURE ||
+                                        it == PermissionRequest.RESOURCE_AUDIO_CAPTURE
+                                }
+                                if (allowed.isNotEmpty()) request.grant(allowed.toTypedArray())
                                 else request.deny()
                             }
                         }

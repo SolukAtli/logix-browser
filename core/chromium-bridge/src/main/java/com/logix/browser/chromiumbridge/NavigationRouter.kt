@@ -15,15 +15,20 @@ object NavigationRouter {
 
         /** Kaynak metin olarak indirilip uygulama içinde gösterilir. */
         FETCH_SOURCE,
+
+        /** Yutulur: otomatik yönlendirmeyle uygulama açılmasın. */
+        IGNORED,
     }
 
-    fun route(url: String, isMainFrame: Boolean): Decision {
+    fun route(url: String, isMainFrame: Boolean, hasGesture: Boolean = true): Decision {
         val scheme = url.substringBefore("://").substringBefore(":").lowercase()
         return when {
             url.startsWith("logix://") -> Decision.IN_WEBVIEW
             url.startsWith("view-source:") -> Decision.FETCH_SOURCE
             scheme == "http" || scheme == "https" -> Decision.IN_WEBVIEW
             !isMainFrame -> Decision.IN_WEBVIEW
+            // intent:// yalnızca kullanıcı tıklamasıyla açılır.
+            url.startsWith("intent://") && !hasGesture -> Decision.IGNORED
             else -> Decision.EXTERNAL_APP
         }
     }

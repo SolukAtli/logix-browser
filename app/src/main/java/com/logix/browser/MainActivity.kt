@@ -22,9 +22,11 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -71,10 +73,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.ModalDrawerSheet
-import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -85,7 +84,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
-import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -209,11 +207,11 @@ private fun BrowserScreen(
     val siteOverrides by siteVm.overrides.collectAsStateWithLifecycle()
     val filterRefreshing by settingsVm.filterRefreshing.collectAsStateWithLifecycle()
 
-    val drawerState = rememberDrawerState(DrawerValue.Closed)
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
+    var showMenu by rememberSaveable { mutableStateOf(false) }
     var showTabs by rememberSaveable { mutableStateOf(false) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var showHistory by rememberSaveable { mutableStateOf(false) }
@@ -393,9 +391,10 @@ private fun BrowserScreen(
     // Back-stack priority (mutually exclusive):
     // 1. open sheet/dialog, 2. web history, 3. close tab,
     // 4. double-press to exit.
-    val sheetsOpen = showSettings || showTabs || showHistory || showBookmarks || findOpen
+    val sheetsOpen = showMenu || showSettings || showTabs || showHistory || showBookmarks || findOpen
     BackHandler(enabled = sheetsOpen) {
         when {
+            showMenu -> showMenu = false
             showSettings -> showSettings = false
             showHistory -> showHistory = false
             showBookmarks -> showBookmarks = false
@@ -427,26 +426,36 @@ private fun BrowserScreen(
         omniVm.onQueryChange(activeTab?.url.orEmpty())
     }
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        // Kenardan kaydırma kapalı: web sayfasında gezerken menünün
-        // istemsiz açılması engellenir, menü düğmeyle açılır.
-        gesturesEnabled = false,
-        drawerContent = {
-            ModalDrawerSheet {
-                Text(
-                    "LOGIX",
-                    style = androidx.compose.material3.MaterialTheme.typography.titleLarge.copy(
-                        fontWeight = FontWeight.Bold,
-                    ),
-                    modifier = Modifier.padding(16.dp),
-                )
+    if (showMenu) {
+        ModalBottomSheet(onDismissRequest = { showMenu = false }) {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(bottom = 24.dp),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "LOGIX",
+                        style = androidx.compose.material3.MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                        ),
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(onClick = { showMenu = false }) {
+                        Icon(Icons.Default.Close, contentDescription = "Menüyü kapat")
+                    }
+                }
                 DrawerEntry(
                     label = "Sekmeler",
                     icon = Icons.Default.Tab,
                     badge = tabs.size.toString(),
                     onClick = {
-                        scope.launch { drawerState.close() }
+                        showMenu = false
                         showTabs = true
                     },
                 )
@@ -455,7 +464,7 @@ private fun BrowserScreen(
                     icon = Icons.Default.Bookmark,
                     badge = bookmarks.size.takeIf { it > 0 }?.toString(),
                     onClick = {
-                        scope.launch { drawerState.close() }
+                        showMenu = false
                         showBookmarks = true
                     },
                 )
@@ -464,7 +473,7 @@ private fun BrowserScreen(
                     icon = Icons.Default.History,
                     badge = history.size.takeIf { it > 0 }?.toString(),
                     onClick = {
-                        scope.launch { drawerState.close() }
+                        showMenu = false
                         showHistory = true
                     },
                 )
@@ -491,7 +500,7 @@ private fun BrowserScreen(
                     label = "Sayfada Ara",
                     icon = Icons.Default.Search,
                     onClick = {
-                        scope.launch { drawerState.close() }
+                        showMenu = false
                         findResult = null
                         findOpen = true
                     },
@@ -514,17 +523,17 @@ private fun BrowserScreen(
                                 label = "Bu Site İçin",
                                 icon = Icons.Default.Tune,
                                 badge = if (siteOverrides.containsKey(host)) "Özel" else null,
-                                onClick = {
-                                    scope.launch { drawerState.close() }
-                                    showSiteSettings = true
-                                },
+                            onClick = {
+                                showMenu = false
+                                showSiteSettings = true
+                            },
                             )
                         }
                         DrawerEntry(
                             label = "Okuyucu Modu",
                             icon = Icons.AutoMirrored.Filled.Article,
                             onClick = {
-                                scope.launch { drawerState.close() }
+                                showMenu = false
                                 tabsVm.readArticle { t, text -> readerText = t to text }
                             },
                         )
@@ -558,7 +567,7 @@ private fun BrowserScreen(
                     label = "Hızlı Temizle",
                     icon = Icons.Default.Delete,
                     onClick = {
-                        scope.launch { drawerState.close() }
+                        showMenu = false
                         scope.launch {
                             quickClearPhase = 1
                             settingsVm.quickClearAll()
@@ -608,7 +617,7 @@ private fun BrowserScreen(
                     label = "Ayarlar",
                     icon = Icons.Default.Settings,
                     onClick = {
-                        scope.launch { drawerState.close() }
+                        showMenu = false
                         showSettings = true
                     },
                 )
@@ -618,9 +627,10 @@ private fun BrowserScreen(
                     onClick = { (context as? ComponentActivity)?.finish() },
                 )
             }
-        },
-    ) {
-        Scaffold(
+        }
+    }
+
+    Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             topBar = {
                 if (settings.barPosition != "bottom") {
@@ -668,13 +678,8 @@ private fun BrowserScreen(
                         onForward = { tabsVm.goForward() },
                         onHome = { tabsVm.createTab() },
                         onRefresh = { tabsVm.refresh() },
-                        // Menü düğmesi aç/kapa: açık menüde basınca kapanır.
-                        onShowMenu = {
-                            scope.launch {
-                                if (drawerState.isOpen) drawerState.close()
-                                else drawerState.open()
-                            }
-                        },
+                        // Menü düğmesi sayfayı açar; kapatma X ile veya geri ile.
+                        onShowMenu = { showMenu = true },
                         incognito = settings.incognito,
                     )
                 }
@@ -767,7 +772,6 @@ private fun BrowserScreen(
                 }
             }
         }
-    }
 
     if (showTabs) {
         TabsSheet(

@@ -54,6 +54,18 @@ class NavigationRouterTest {
     }
 
     @Test
+    fun `hareketsiz intent yutulur`() {
+        assertEquals(
+            NavigationRouter.Decision.IGNORED,
+            NavigationRouter.route("intent://x#Intent;scheme=y;end", true, hasGesture = false),
+        )
+        assertEquals(
+            NavigationRouter.Decision.EXTERNAL_APP,
+            NavigationRouter.route("intent://x#Intent;scheme=y;end", true, hasGesture = true),
+        )
+    }
+
+    @Test
     fun `intent fallback adresi cozulur`() {
         val fallback = NavigationRouter.intentFallbackUrl(
             "intent://x#Intent;scheme=https;S.browser_fallback_url=https%3A%2F%2Fexample.com%2Fy;end",
