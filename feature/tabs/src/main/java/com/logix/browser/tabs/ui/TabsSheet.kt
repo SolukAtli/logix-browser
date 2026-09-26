@@ -2,24 +2,29 @@ package com.logix.browser.tabs.ui
 
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material3.Button
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -58,7 +63,8 @@ fun TabsSheet(
                 items(tabs, key = { it.id }) { tab ->
                     ElevatedCard(onClick = { onSelect(tab.id) }) {
                         Column {
-                            thumbnails[tab.id]?.let { bmp ->
+                            val bmp = thumbnails[tab.id]
+                            if (bmp != null) {
                                 Image(
                                     bitmap = bmp.asImageBitmap(),
                                     contentDescription = null,
@@ -68,6 +74,22 @@ fun TabsSheet(
                                         .aspectRatio(16f / 10f)
                                         .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)),
                                 )
+                            } else {
+                                // Önizleme yoksa sabit yer tutucu (kart zıplamasın).
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(16f / 10f)
+                                        .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        Icons.Default.Language,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(32.dp),
+                                    )
+                                }
                             }
                             Column(modifier = Modifier.padding(12.dp)) {
                                 Row(

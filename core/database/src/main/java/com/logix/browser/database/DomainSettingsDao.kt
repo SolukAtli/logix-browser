@@ -16,4 +16,7 @@ interface DomainSettingsDao {
 
     @Query("DELETE FROM domain_settings WHERE host = :host")
     suspend fun deleteByHost(host: String)
+
+    @Query("DELETE FROM domain_settings")
+    suspend fun clearAll()
 }

@@ -74,6 +74,12 @@ private data class PrivacyKey(
     val siteJs: Boolean?,
 )
 
+/** Bilinen şema → resmi paketler. Eşleşmezse genel çözümleme + Toast. */
+private val PINNED_PACKAGES: Map<String, List<String>> = mapOf(
+    "snssdk1233://" to listOf("com.zhiliaoapp.musically", "com.ss.android.ugc.trill"),
+    "market://" to listOf("com.android.vending"),
+)
+
 /** İzlenmek istemiyorum + Global Gizlilik Denetimi başlıkları. */
 private fun gpcHeaders(): Map<String, String> = mapOf(
     "DNT" to "1",
@@ -178,8 +184,7 @@ fun ContentViewHost(
 
                     private fun openExternal(view: WebView, target: String) {
                         val opened = runCatching {
-                            if (target.startsWith("intent://")) {
-                                val intent = Intent.parseUri(target, Intent.URI_INTENT_SCHEME)
+                            if (target.startsWith("intent://")) {                                val intent = Intent.parseUri(target, Intent.URI_INTENT_SCHEME)
                                 intent.addCategory(Intent.CATEGORY_BROWSABLE)
                                 intent.component = null
                                 intent.selector = null
@@ -206,6 +211,25 @@ fun ContentViewHost(
                             val view2 = Intent(Intent.ACTION_VIEW, Uri.parse(target)).apply {
                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             }
+                            // Bilinen şemalarda hedef paket sabitlenir (deep-link hijacking'e karşı).
+                            val pinned = PINNED_PACKAGES.entries.firstOrNull { (scheme, _) ->
+                                target.startsWith(scheme)
+                            }?.value
+                            if (pinned != null) {
+                                val hit = pinned.firstNotNullOfOrNull { pkg ->
+                                    runCatching {
+                                        val sized = Intent(view2).setPackage(pkg)
+                                        if (sized.resolveActivity(appContext.packageManager) != null) {
+                                            appContext.startActivity(sized)
+                                            pkg
+                                        } else {
+                                            null
+                                        }
+                                    }.getOrNull()
+                                }
+                                if (hit != null) return@runCatching true
+                                return@runCatching false
+                            }
                             if (view2.resolveActivity(appContext.packageManager) == null) {
                                 return@runCatching false
                             }
@@ -223,28 +247,45 @@ fun ContentViewHost(
 
                     private fun fetchSource(view: WebView, url: String) {
                         ioScope.launch(Dispatchers.IO) {
-                            val text = runCatching {
-                                val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-                                    connectTimeout = 15_000
-                                    readTimeout = 20_000
-                                    // WebView oturumuyla aynı kimlik: çerez + UA taşınır.
-                                    setRequestProperty(
-                                        "Cookie",
-                                        CookieManager.getInstance().getCookie(url).orEmpty(),
-                                    )
-                                    setRequestProperty("User-Agent", view.settings.userAgentString)
-                                }
-                                try {
-                                    if (conn.responseCode != HttpURLConnection.HTTP_OK) return@runCatching null
-                                    conn.inputStream.bufferedReader().readText().take(200_000)
-                                } finally {
-                                    conn.disconnect()
-                                }
-                            }.getOrNull()
+                            val text = runCatching { fetchSourceSync(view, url) }.getOrNull()
                             withContext(Dispatchers.Main) {
                                 latestSource(view.title.orEmpty(), text)
                             }
                         }
+                    }
+
+                    /** Elle redirect takibi: en fazla 3, yalnızca http(s), her adımda çerez yeniden. */
+                    private fun fetchSourceSync(view: WebView, startUrl: String): String? {
+                        if (!UrlSafety.isHttp(startUrl)) return null
+                        var current = startUrl
+                        repeat(4) {
+                            val conn = (URL(current).openConnection() as HttpURLConnection).apply {
+                                connectTimeout = 15_000
+                                readTimeout = 20_000
+                                instanceFollowRedirects = false
+                                // WebView oturumuyla aynı kimlik: çerez + UA taşınır.
+                                setRequestProperty(
+                                    "Cookie",
+                                    CookieManager.getInstance().getCookie(current).orEmpty(),
+                                )
+                                setRequestProperty("User-Agent", view.settings.userAgentString)
+                            }
+                            try {
+                                val code = conn.responseCode
+                                if (code in 300..399) {
+                                    val next = conn.getHeaderField("Location") ?: return null
+                                    current = URL(URL(current), next).toString()
+                                    if (!UrlSafety.isHttp(current)) return null
+                                    conn.disconnect()
+                                    return@repeat
+                                }
+                                if (code != HttpURLConnection.HTTP_OK) return null
+                                return conn.inputStream.bufferedReader().readText().take(200_000)
+                            } finally {
+                                conn.disconnect()
+                            }
+                        }
+                        return null
                     }
 
                     override fun shouldInterceptRequest(

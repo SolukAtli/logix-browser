@@ -1,9 +1,13 @@
 package com.logix.browser.settings
 
-import android.webkit.CookieManager
+import android.content.Context
+import com.logix.browser.chromiumbridge.BrowserDataWiper
+import com.logix.browser.database.AdBlockStatsDao
 import com.logix.browser.database.BookmarkDao
+import com.logix.browser.database.DomainSettingsDao
 import com.logix.browser.database.HistoryDao
 import com.logix.browser.database.TabDao
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.first
@@ -12,8 +16,8 @@ import kotlinx.coroutines.flow.first
  * Ölüm Anahtarı: tarayıcı belirlenen gün sayısı boyunca hiç açılmazsa,
  * açılışta TÜM yerel veriyi geri döndürülemez şekilde imha eder.
  *
- * Silinenler: geçmiş, yer imleri, sekmeler, çerezler/oturumlar.
- * Gizli moddayken sayaç ilerlemez, silme yapılmaz.
+ * Silinenler: geçmiş, yer imleri, sekmeler, çerezler/oturumlar,
+ * site verileri, önbellek, engelleme istatistikleri, site ayarları.
  *
  * @return true → bu açılışta imha gerçekleşti.
  */
@@ -23,6 +27,10 @@ class DeathResetManager @Inject constructor(
     private val historyDao: HistoryDao,
     private val bookmarkDao: BookmarkDao,
     private val tabDao: TabDao,
+    private val statsDao: AdBlockStatsDao,
+    private val domainDao: DomainSettingsDao,
+    private val wiper: BrowserDataWiper,
+    @ApplicationContext private val context: Context,
 ) {
 
     suspend fun onAppStart(): Boolean {
@@ -53,10 +61,9 @@ class DeathResetManager @Inject constructor(
         historyDao.clearAll()
         bookmarkDao.clearAll()
         tabDao.clearAll()
-        runCatching {
-            val cookies = CookieManager.getInstance()
-            cookies.removeAllCookies(null)
-            cookies.flush()
-        }
+        statsDao.clear()
+        domainDao.clearAll()
+        wiper.wipeCookiesAndStorage()
+        runCatching { wiper.wipeAppCache(context.cacheDir) }
     }
 }

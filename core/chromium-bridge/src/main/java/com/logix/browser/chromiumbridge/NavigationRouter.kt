@@ -26,9 +26,9 @@ object NavigationRouter {
             url.startsWith("logix://") -> Decision.IN_WEBVIEW
             url.startsWith("view-source:") -> Decision.FETCH_SOURCE
             scheme == "http" || scheme == "https" -> Decision.IN_WEBVIEW
-            !isMainFrame -> Decision.IN_WEBVIEW
-            // intent:// yalnızca kullanıcı tıklamasıyla açılır.
-            url.startsWith("intent://") && !hasGesture -> Decision.IGNORED
+            !isMainFrame -> Decision.IGNORED
+            // Kullanıcı tıklaması yoksa dış uygulama açılmaz.
+            !hasGesture -> Decision.IGNORED
             else -> Decision.EXTERNAL_APP
         }
     }
@@ -43,6 +43,6 @@ object NavigationRouter {
             .substringBefore(" ")
         return runCatching {
             java.net.URLDecoder.decode(encoded, "UTF-8")
-        }.getOrNull()?.takeIf { it.startsWith("http") }
+        }.getOrNull()?.takeIf { UrlSafety.isHttp(it) }
     }
 }

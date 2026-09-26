@@ -8,6 +8,7 @@ import com.logix.browser.chromiumbridge.Engine
 import com.logix.browser.chromiumbridge.EngineRegistry
 import com.logix.browser.chromiumbridge.MemoryPressureHandler
 import com.logix.browser.chromiumbridge.PlaybackGate
+import com.logix.browser.chromiumbridge.BrowserDataWiper
 import com.logix.browser.database.TabState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -36,6 +37,7 @@ class TabsViewModel @Inject constructor(
     private val engineManager: ChromiumEngineManager,
     private val registry: EngineRegistry,
     private val playbackGate: PlaybackGate,
+    private val wiper: BrowserDataWiper,
     memoryPressure: MemoryPressureHandler,
 ) : ViewModel() {
 
@@ -69,7 +71,13 @@ class TabsViewModel @Inject constructor(
                     }
                     // Kapanmış sekmelerin önizlemelerini bellekten at.
                     val live = list.map { it.id }.toSet()
-                    _thumbnails.value = _thumbnails.value.filterKeys { it in live }
+                    val current = _thumbnails.value
+                    if (current.keys.any { it !in live }) {
+                        current.filterKeys { it !in live }.values.forEach { bmp ->
+                            runCatching { if (!bmp.isRecycled) bmp.recycle() }
+                        }
+                        _thumbnails.value = current.filterKeys { it in live }
+                    }
                 }
             }
         }
@@ -143,7 +151,7 @@ class TabsViewModel @Inject constructor(
                     }
                 }.getOrNull()
                 if (prevThumb != null) {
-                    _thumbnails.value = _thumbnails.value + (prevId to prevThumb)
+                    storeThumbnail(prevId, prevThumb)
                 }
                 if (!playbackGate.keepAudioInBackground) {
                     registry.get(prevId)?.onHide()
@@ -212,6 +220,15 @@ class TabsViewModel @Inject constructor(
         }
     }
 
+    private fun storeThumbnail(id: String, bmp: Bitmap) {
+        val prev = _thumbnails.value[id]
+        _thumbnails.value = _thumbnails.value + (id to bmp)
+        // Eski bitmap'i serbest bırak (bellek).
+        if (prev != null && prev != bmp && !prev.isRecycled) {
+            runCatching { prev.recycle() }
+        }
+    }
+
     /** Drops the bound engine's back/forward list (incognito entry). */
     fun clearActiveEngineHistory() {
         activeTab.value?.id?.let { registry.get(it)?.clearHistory() }
@@ -219,6 +236,19 @@ class TabsViewModel @Inject constructor(
 
     fun setKeepAudio(enabled: Boolean) {
         playbackGate.keepAudioInBackground = enabled
+    }
+
+    /** Gizli moda giriş: veri silinir, sayfa sıfırlanır. */
+    suspend fun beginIncognito() {
+        wiper.wipeCookiesAndStorage()
+        withContext(Dispatchers.Main) {
+            engineManager.loadUrl("about:blank")
+        }
+    }
+
+    /** Gizli moddan çıkış: oturum artığı silinir. */
+    suspend fun endIncognito() {
+        wiper.wipeCookiesAndStorage()
     }
 
     /** Aktif sekmenin o anki görünümünü önizleme olarak yakalar. */
@@ -233,7 +263,7 @@ class TabsViewModel @Inject constructor(
                 }
             }.getOrNull()
             if (bmp != null) {
-                _thumbnails.value = _thumbnails.value + (tab.id to bmp)
+                storeThumbnail(tab.id, bmp)
             }
         }
     }

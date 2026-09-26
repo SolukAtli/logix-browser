@@ -1,10 +1,10 @@
 package com.logix.browser.settings
 
-import android.webkit.CookieManager
 import android.webkit.WebStorage
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.logix.browser.adblock.AdBlockStatsRepository
+import com.logix.browser.chromiumbridge.BrowserDataWiper
 import com.logix.browser.database.BookmarkDao
 import com.logix.browser.database.HistoryDao
 import com.logix.browser.search.SearchEngine
@@ -33,6 +33,7 @@ class SettingsViewModel @Inject constructor(
     private val bookmarkDao: BookmarkDao,
     private val deathReset: DeathResetManager,
     private val filterUpdater: FilterUpdater,
+    private val wiper: BrowserDataWiper,
     stats: AdBlockStatsRepository,
 ) : ViewModel() {
 
@@ -59,6 +60,10 @@ class SettingsViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             _deathResetTriggered.value = deathReset.onAppStart()
+        }
+        // Kayıtlı motoru geri yükle (yoksa Google).
+        viewModelScope.launch {
+            engines.selectByKey(repository.settings.first().searchEngineKey)
         }
         viewModelScope.launch {
             if (repository.settings.first().filterAutoUpdate) {
@@ -189,10 +194,7 @@ class SettingsViewModel @Inject constructor(
         if (current.quickClearHistory) historyDao.clearAll()
         if (current.quickClearBookmarks) bookmarkDao.clearAll()
         if (current.quickClearCookies) {
-            runCatching {
-                CookieManager.getInstance().removeAllCookies(null)
-                CookieManager.getInstance().flush()
-            }
+            wiper.wipeCookiesAndStorage()
         }
         if (current.quickClearCache) {
             runCatching { WebStorage.getInstance().deleteAllData() }

@@ -250,7 +250,7 @@ fun SettingsScreen(
                 iconTint = Color(0xFF2196F3),
             )
             SettingSwitch(
-                label = "Arka planda ses oynat",
+                label = "Sekme değişiminde sesi koru",
                 checked = backgroundAudio,
                 onCheckedChange = onBackgroundAudioChange,
                 icon = Icons.Default.MusicNote,
@@ -283,9 +283,13 @@ fun SettingsScreen(
                     ),
                 )
             }
+            Text(
+                "Zararlı site koruması (Safe Browsing) henüz aktif değil.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             SettingSwitch(
-                label = "Reklam Engelleme",
-                checked = settings.adBlockEnabled,
+                label = "Reklam Engelleme",                checked = settings.adBlockEnabled,
                 onCheckedChange = onAdBlockChange,
                 icon = Icons.Default.Block,
                 iconTint = Color(0xFFF44336),

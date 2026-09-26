@@ -46,9 +46,9 @@ class NavigationRouterTest {
     }
 
     @Test
-    fun `iframe ici ozel sema webviewde birakilir`() {
+    fun `iframe ici ozel sema yutulur`() {
         assertEquals(
-            NavigationRouter.Decision.IN_WEBVIEW,
+            NavigationRouter.Decision.IGNORED,
             NavigationRouter.route("snssdk1233://x", false),
         )
     }
@@ -62,6 +62,18 @@ class NavigationRouterTest {
         assertEquals(
             NavigationRouter.Decision.EXTERNAL_APP,
             NavigationRouter.route("intent://x#Intent;scheme=y;end", true, hasGesture = true),
+        )
+    }
+
+    @Test
+    fun `hareketsiz custom scheme yutulur`() {
+        assertEquals(
+            NavigationRouter.Decision.IGNORED,
+            NavigationRouter.route("snssdk1233://aweme/detail/1", true, hasGesture = false),
+        )
+        assertEquals(
+            NavigationRouter.Decision.EXTERNAL_APP,
+            NavigationRouter.route("snssdk1233://aweme/detail/1", true, hasGesture = true),
         )
     }
 

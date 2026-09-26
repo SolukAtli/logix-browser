@@ -56,7 +56,7 @@ class BookmarksViewModel @Inject constructor(
         regex.findAll(html).forEach { match ->
             val url = match.groupValues[1]
             val title = match.groupValues[2].trim()
-            if (url.startsWith("http")) {
+            if (com.logix.browser.chromiumbridge.UrlSafety.isHttp(url)) {
                 viewModelScope.launch {
                     bookmarkDao.upsert(
                         Bookmark(url = url, title = title.ifBlank { url }, createdAt = now),

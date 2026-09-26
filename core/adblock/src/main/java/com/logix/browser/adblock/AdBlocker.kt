@@ -50,6 +50,25 @@ class DomainAdBlocker @Inject constructor() : AdBlocker {
         }
     }
 
+    /**
+     * Atomik liste değişimi: indirme + parse staging'de biter, burası
+     * eski listeyi tek seferde yenisiyle değiştirir (stale kural kalmaz).
+     */
+    fun replaceAll(
+        adDomains: Set<String>,
+        trackerDomains: Set<String>,
+        allowlisted: Set<String>,
+        cosmetic: List<String>,
+    ) {
+        synchronized(lock) {
+            adHosts = adDomains.map { it.lowercase() }.toSet()
+            trackerHosts = trackerDomains.map { it.lowercase() }.toSet()
+            allowHosts = allowlisted.map { it.lowercase() }.toSet()
+            selectors = cosmetic.distinct()
+            rebuildLocked()
+        }
+    }
+
     override fun shouldBlock(host: String): Boolean {
         val h = host.lowercase()
         if (h.isEmpty()) return false

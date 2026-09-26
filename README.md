@@ -40,7 +40,7 @@ blocking, incognito isolation and a dead man's switch.
 |---|---|
 | Smart omnibox | Auto-detects URL vs. search query, pill UI with engine picker |
 | Tab strip | Scrollable tab bar docked to the **top or bottom** (follows bar position) |
-| Tab manager | Grid sheet, LRU engine pool, freeze/restore under memory pressure |
+| Tab manager | Grid sheet with previews; LRU engine admission (experimental) |
 | New Tab Page | Minimal LOGIX home with search card + quick actions |
 | Voice search | System speech recognizer → fills omnibox and searches |
 | Visual search | Pick an image → sent to Google Lens (falls back to lens.google.com) |
@@ -173,7 +173,7 @@ flowchart TB
     subgraph core["core"]
         ENG["chromium-bridge\nEngine interface"]
         ADB["adblock\nEasyList parser"]
-        DB["database (Room v3)"]
+        DB["database (Room v4)"]
         NET["network\nHTTPS, Safe Browsing"]
         SEA["search\nengines + resolver"]
     end
@@ -196,10 +196,10 @@ flowchart TB
 | `:feature:settings` | DataStore settings + grouped settings screen | `SettingsViewModel`, `SettingsScreen`, `AccentPalette` |
 | `:core:chromium-bridge` | Stable `Engine` API over System WebView today, native Chromium tomorrow | `Engine`, `WebViewEngine`, `ContentViewHost`, `UserAgents` |
 | `:core:adblock` | EasyList parsing, domain matching, WebView client hooks | `FilterParser`, `DomainTrie`, `AdBlockWebViewClient` |
-| `:core:database` | Room v3: tabs, history, bookmarks, engines, ad stats | `BrowserDatabase`, `BookmarkDao`, `HistoryDao` |
+| `:core:database` | Room v4: tabs, history, bookmarks, engines, ad stats, site settings | `BrowserDatabase`, `BookmarkDao`, `HistoryDao` |
 | `:core:network` | HTTPS upgrading, Safe Browsing interface | `HttpsUpgrader`, `SafeBrowsingClient` |
 | `:core:search` | Engine catalog + smart URL-vs-query resolver | `DefaultSearchEngines`, `OmniboxResolver` |
-| `native/` | JNI bridge + C++ filter engine (experimental) | `content_bridge.cc`, `filter_engine/` |
+| `native/` | JNI bridge + C++ filter engine (in repo, not wired to production yet) | `content_bridge.cc`, `filter_engine/` |
 | `scripts/` | Chromium sync / Trichrome build helpers | `sync-chromium.py`, `build-chromium.sh` |
 | `vendor/icons/` | Reference search-engine artwork | SVGs |
 
@@ -218,6 +218,7 @@ DataStore Preferences · Coroutines/Flow · KSP · AGP 8.13 · compile/targetSdk
   screenshots/screen recording are blocked at the window level.
 - **Blocking happens on-device:** filter lists are parsed and matched locally —
   your browsing never leaves the phone for "cloud protection".
+- HTTP siteleri açılır (cleartext'e izinli); HTTPS-Only ile yükseltilebilir.
 - **Safe Browsing is currently a NoOp:** the interface exists for a real
   provider, but no malicious-site protection is active by default.
 - **Death reset is opt-in and loud:** enabling it requires confirming a red

@@ -110,6 +110,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.logix.browser.chromiumbridge.ContentViewHost
 import com.logix.browser.chromiumbridge.ShieldsConfig
+import com.logix.browser.chromiumbridge.UrlSafety
 import com.logix.browser.chromiumbridge.UserAgents
 import com.logix.browser.omnibox.OmniboxViewModel
 import com.logix.browser.omnibox.ui.OmniboxBar
@@ -169,7 +170,7 @@ class MainActivity : ComponentActivity() {
 
     private fun consumeExternalIntent(intent: Intent?) {
         if (intent?.action == Intent.ACTION_VIEW) {
-            intent.dataString?.takeIf { it.startsWith("http") }?.let {
+            intent.dataString?.takeIf { UrlSafety.isHttp(it) }?.let {
                 externalUrl = it
             }
         }
@@ -221,6 +222,45 @@ private fun BrowserScreen(
     var findResult by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     var permissionPrompt by remember {
         mutableStateOf<Triple<String, List<String>, (List<String>) -> Unit>?>(null)
+    }
+    // Sistem runtime izin sonuçları (null = henüz sorulmadı).
+    var permissionRuntime by remember { mutableStateOf<Map<String, Boolean>?>(null) }
+    val runtimePermLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { grants ->
+        permissionRuntime = grants
+    }
+
+    /** Web izin isteği → önce sistem izni, sonra kaynak bazında onay. */
+    fun onWebPermission(
+        origin: String,
+        resources: List<String>,
+        decide: (List<String>) -> Unit,
+    ) {
+        if (resources.isEmpty()) {
+            permissionPrompt = null
+            permissionRuntime = null
+            return
+        }
+        permissionPrompt = Triple(origin, resources, decide)
+        permissionRuntime = null
+        val needed = buildSet {
+            if (resources.contains(PermissionRequest.RESOURCE_VIDEO_CAPTURE)) {
+                add(android.Manifest.permission.CAMERA)
+            }
+            if (resources.contains(PermissionRequest.RESOURCE_AUDIO_CAPTURE)) {
+                add(android.Manifest.permission.RECORD_AUDIO)
+            }
+        }
+        if (needed.isEmpty()) {
+            permissionRuntime = emptyMap()
+        } else {
+            runCatching { runtimePermLauncher.launch(needed.toTypedArray()) }
+                .onFailure {
+                    decide(emptyList())
+                    permissionPrompt = null
+                }
+        }
     }
     var showSiteSettings by rememberSaveable { mutableStateOf(false) }
     var readerText by remember { mutableStateOf<Pair<String, String?>?>(null) }
@@ -290,32 +330,65 @@ private fun BrowserScreen(
         runCatching { voiceLauncher.launch(intent) }
     }
 
+    // Görsel arama hedefi: resmi Lens'e gönder (kuruluysa), yoksa Lens sayfası.
+    fun sendToLens(uri: Uri) {
+        val lensSend = Intent(Intent.ACTION_SEND).apply {
+            type = "image/*"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            setPackage("com.google.android.googlequicksearchbox")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        val opened = runCatching {
+            if (lensSend.resolveActivity(context.packageManager) != null) {
+                context.startActivity(lensSend)
+                true
+            } else {
+                false
+            }
+        }.getOrDefault(false)
+        if (!opened) {
+            tabsVm.openInActiveTab("https://lens.google.com/")
+        }
+    }
+
     // Görsel arama: resmi Lens'e gönder (kuruluysa), yoksa Lens sayfası.
     val imageLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent(),
     ) { uri ->
-        if (uri != null) {
-            val lensSend = Intent(Intent.ACTION_SEND).apply {
-                type = "image/*"
-                putExtra(Intent.EXTRA_STREAM, uri)
-                setPackage("com.google.android.googlequicksearchbox")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            val opened = runCatching {
-                if (lensSend.resolveActivity(context.packageManager) != null) {
-                    context.startActivity(lensSend)
-                    true
-                } else {
-                    false
-                }
-            }.getOrDefault(false)
-            if (!opened) {
-                tabsVm.openInActiveTab("https://lens.google.com/")
-            }
-        }
+        if (uri != null) sendToLens(uri)
     }
+
+    // Kamera ile çek, doğrudan Lens'e gönder.
+    val lensPhotoUri = remember {
+        val file = java.io.File(context.cacheDir, "lens-capture.jpg")
+        androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "com.logix.browser.fileprovider",
+            file,
+        )
+    }
+    val cameraLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicture(),
+    ) { saved ->
+        if (saved) sendToLens(lensPhotoUri)
+    }
+
+    val cameraPermLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) runCatching { cameraLauncher.launch(lensPhotoUri) }
+    }
+
     fun launchImageSearch() {
-        runCatching { imageLauncher.launch("image/*") }
+        val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.CAMERA,
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            runCatching { cameraLauncher.launch(lensPhotoUri) }
+        } else {
+            runCatching { cameraPermLauncher.launch(android.Manifest.permission.CAMERA) }
+        }
     }
 
     // Yer imi dışa aktar (HTML dosyası).
@@ -591,9 +664,16 @@ private fun BrowserScreen(
                     badge = if (settings.incognito) "Açık" else null,
                     onClick = {
                         val next = !settings.incognito
-                        settingsVm.setIncognito(next)
-                        if (next) {
-                            tabsVm.clearActiveEngineHistory()
+                        scope.launch {
+                            if (next) {
+                                tabsVm.beginIncognito()
+                            }
+                            settingsVm.setIncognito(next)
+                            if (next) {
+                                tabsVm.clearActiveEngineHistory()
+                            } else {
+                                tabsVm.endIncognito()
+                            }
                         }
                     },
                 )
@@ -756,11 +836,7 @@ private fun BrowserScreen(
                         },
                         onFindResult = { active, total -> findResult = active to total },
                         onPermissionRequest = { origin, resources, decide ->
-                            if (resources.isEmpty()) {
-                                permissionPrompt = null
-                            } else {
-                                permissionPrompt = Triple(origin, resources, decide)
-                            }
+                            onWebPermission(origin, resources, decide)
                         },
                         onSourceLoaded = { title, source ->
                             readerText = title to source
@@ -790,15 +866,31 @@ private fun BrowserScreen(
     }
 
     permissionPrompt?.let { (origin, resources, decide) ->
+        val runtime = permissionRuntime
         // Yalnızca desteklenen kaynaklar verilebilir; her biri ayrı onaylanır.
-        val grantable = remember(resources) {
+        // Sistem izni reddedilen kaynak listeden düşer.
+        val grantable = remember(resources, runtime) {
+            if (runtime == null) return@remember emptyList()
             resources.filter {
-                it == PermissionRequest.RESOURCE_VIDEO_CAPTURE ||
-                    it == PermissionRequest.RESOURCE_AUDIO_CAPTURE
+                val systemOk = when (it) {
+                    PermissionRequest.RESOURCE_VIDEO_CAPTURE ->
+                        runtime[android.Manifest.permission.CAMERA] == true
+                    PermissionRequest.RESOURCE_AUDIO_CAPTURE ->
+                        runtime[android.Manifest.permission.RECORD_AUDIO] == true
+                    else -> false
+                }
+                systemOk
             }
         }
-        if (grantable.isEmpty()) {
+        if (runtime == null) {
+            // Sistem sorusu dönene kadar bekle (boş dialog gösterme).
+        } else if (grantable.isEmpty()) {
             LaunchedEffect(Unit) {
+                android.widget.Toast.makeText(
+                    context,
+                    "Sistem izni verilmedi, site isteği reddedildi",
+                    android.widget.Toast.LENGTH_SHORT,
+                ).show()
                 decide(emptyList())
                 permissionPrompt = null
             }

@@ -38,8 +38,17 @@ class FilterUpdater @Inject constructor(
 
     suspend fun updateNow(): Boolean = withContext(Dispatchers.IO) {
         runCatching {
-            download(EASYLIST)?.let { adBlocker.loadFilterText(it) }
-            download(EASYPRIVACY)?.let { adBlocker.loadFilterText(it) }
+            // İkisi de inmeden eski liste + eski tarih korunur.
+            val easyList = download(EASYLIST) ?: return@runCatching false
+            val easyPrivacy = download(EASYPRIVACY) ?: return@runCatching false
+            val ads = com.logix.browser.adblock.FilterParser.parse(easyList)
+            val trackers = com.logix.browser.adblock.FilterParser.parse(easyPrivacy)
+            adBlocker.replaceAll(
+                ads.blockedHosts,
+                trackers.blockedHosts,
+                ads.allowlistedHosts + trackers.allowlistedHosts,
+                ads.cosmeticSelectors + trackers.cosmeticSelectors,
+            )
             repository.markFiltersUpdated()
             true
         }.getOrDefault(false)

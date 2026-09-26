@@ -25,4 +25,7 @@ interface AdBlockStatsDao {
             "updatedAt = :now WHERE id = 0",
     )
     suspend fun increment(ads: Long, trackers: Long, now: Long): Int
+
+    @Query("DELETE FROM adblock_stats")
+    suspend fun clear()
 }
